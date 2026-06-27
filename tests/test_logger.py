@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
-from base_python_project.logger import (
+from word_of_the_day.logger import (
     ConsoleFormatter,
     JSONFormatter,
     SafeJSONEncoder,

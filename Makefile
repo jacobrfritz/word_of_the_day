@@ -22,4 +22,4 @@ typecheck:
 	uv run mypy src
 
 run:
-	uv run base_python_project
+	uv run word_of_the_day

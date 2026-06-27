@@ -1,4 +1,4 @@
-# base_python_project
+# word_of_the_day
 
 A robust default Python project template using `uv`.
 
@@ -14,7 +14,7 @@ python bootstrap.py
 
 The bootstrap script will:
 - **Check for `uv`**: Automatically installs [uv](https://github.com/astral-sh/uv) if it's not already on your system.
-- **Rename Project**: Guides you through renaming the project and its Python package from the default `base_python_project`.
+- **Rename Project**: Guides you through renaming the project and its Python package from the default `word_of_the_day`.
 - **Sync Dependencies**: Installs project dependencies and allows you to select optional extras (e.g., `data`, `ml`, `api`).
 - **Reset Git**: Optionally clears the template's git history and initializes a new repository for your project.
 
@@ -27,7 +27,7 @@ Common development tasks can be run using either the `Makefile` (convenient for 
 | Task | Make Command | Direct `uv` Command | Description |
 | :--- | :--- | :--- | :--- |
 | **Sync Dependencies** | `make install` | `uv sync` | Install or sync project dependencies. |
-| **Run CLI** | `make run` | `uv run base_python_project` | Run the application command-line interface. |
+| **Run CLI** | `make run` | `uv run word_of_the_day` | Run the application command-line interface. |
 | **Run Tests** | `make test` | `uv run pytest` | Run the test suite. |
 | **Watch Tests** | `make test-watch` | `uv run ptw` | Run tests in watch mode. |
 | **Coverage Report** | `make test-cov` | `uv run pytest --cov=src --cov-report=term-missing` | Run tests and generate coverage. |
@@ -62,7 +62,7 @@ One of the main advantages of running commands directly via `uv` is the ability 
 ├── pyproject.toml
 ├── uv.lock
 ├── src/
-│   └── base_python_project/
+│   └── word_of_the_day/
 │       ├── __init__.py
 │       ├── cli.py
 │       └── main.py

@@ -1,6 +1,6 @@
 # tests/test_main.py
 import pytest
-from base_python_project import main
+from word_of_the_day import main
 
 
 def test_run(capsys: pytest.CaptureFixture[str]) -> None:

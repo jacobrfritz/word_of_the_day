@@ -1,4 +1,4 @@
-# src/base_python_project/logger.py
+# src/word_of_the_day/logger.py
 import json
 import logging
 import os

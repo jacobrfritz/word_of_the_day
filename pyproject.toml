@@ -1,13 +1,17 @@
 [project]
-name = "base_python_project"
+name = "word_of_the_day"
 version = "0.1.0"
 description = "A default Python project template using uv."
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "httpx[http2]>=0.28.1",
+    "requests>=2.33.1",
+    "wordfreq>=3.1.1",
+]
 
 [project.scripts]
-base_python_project = "base_python_project.cli:main"
+word_of_the_day = "word_of_the_day.cli:main"
 
 [project.optional-dependencies]
 # Analytics & Data Manipulation
@@ -63,6 +67,7 @@ dev = [
     "pytest-watch>=4.2.0",
     "pytest-cov>=5.0.0",
     "pre-commit>=3.7.0",
+    "types-requests>=2.33.0.20260518",
 ]
 
 [tool.ruff]

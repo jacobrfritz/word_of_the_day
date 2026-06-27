@@ -1,4 +1,4 @@
-# src/base_python_project/cli.py
+# src/word_of_the_day/cli.py
 import argparse
 import sys
 
@@ -6,7 +6,7 @@ from .main import run
 
 
 def parse_args(args: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Base Python Project CLI")
+    parser = argparse.ArgumentParser(description="Word Of The Day CLI")
     return parser.parse_args(args)
 
 
