@@ -316,8 +316,7 @@ def setup_logging(
             )
         else:
             raise ValueError(
-                f"Invalid rotation_type: '{rotation_type}'. "
-                "Must be 'size' or 'time'."
+                f"Invalid rotation_type: '{rotation_type}'. Must be 'size' or 'time'."
             )
 
         file_handler.setLevel(f_lvl)

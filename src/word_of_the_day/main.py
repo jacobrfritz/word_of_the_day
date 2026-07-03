@@ -1,59 +1,21 @@
 import logging
-import re
-import urllib.parse
 from pathlib import Path
-
-import requests
 
 from .logger import get_logger, setup_logging
 
 logger = get_logger(__name__)
 
 
-def get_word_definition(word: str) -> tuple[bool, str]:
-    """
-    Validates a word against the Free Dictionary API and retrieves
-    its primary definition.
-
-    Returns:
-        tuple[bool, str]: (is_valid, definition_or_error_message)
-    """
-    # URL encode the word to handle any special characters safely
-    safe_word = urllib.parse.quote(word.lower())
-    url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{safe_word}"
-
-    try:
-        # 5-second timeout to prevent the pipeline from hanging on network issues
-        response = requests.get(url, timeout=5)
-
-        if response.status_code == 200:
-            data = response.json()
-            # Safely navigate the nested dictionary response to extract the definition
-            if data and isinstance(data, list):
-                meanings = data[0].get("meanings", [])
-                if meanings:
-                    definitions = meanings[0].get("definitions", [])
-                    if definitions:
-                        definition = definitions[0].get(
-                            "definition", "No definition text found."
-                        )
-                        part_of_speech = meanings[0].get("partOfSpeech", "unknown")
-                        return True, f"({part_of_speech}) {definition}"
-            return True, "Word is valid, but no definition layout was found."
-
-        elif response.status_code == 404:
-            # 404 means the word was not found in the dictionary (invalid word)
-            return False, "Not a valid English word."
-
-        else:
-            return False, f"API error status code: {response.status_code}"
-
-    except requests.RequestException as e:
-        logger.warning(f"Network error while validating '{word}': {e}")
-        return False, f"Network validation failed: {e}"
-
-
-def run() -> None:
+def run(
+    source: str | list[str] = "all",
+    book_id: str | None = None,
+    min_score: float = 2.3,
+    max_score: float = 4.0,
+    limit: int = 15,
+    shuffle: bool = False,
+    tags: str | None = None,
+    author: str | None = None,
+) -> None:
     """Core application logic demonstrating robust logging, word frequency
 
     analysis, and dictionary validation.
@@ -71,117 +33,123 @@ def run() -> None:
 
     logger.info("Starting the Word of the Day analysis pipeline.")
 
-    # 1. Fetch text from Wikipedia if enabled (flip to True to run)
-    if False:
-        from .wikipedia_connector import (
-            WikipediaAPIError,
-            WikipediaClient,
-            WikipediaRateLimitError,
-        )
+    # 1. Fetch text from selected sources
+    from .connectors import Connector
 
-        app_info = {
-            "app_name": "WordOfTheDayApp",
-            "contact_email": "fritz@example.com",
-            "version": "1.0.0",
-        }
+    selected_sources = [source] if isinstance(source, str) else list(source)
+    if "all" in selected_sources:
+        selected_sources = ["wikipedia", "gutenberg", "nyt", "quotable", "poetry_db"]
 
-        logger.info("Initializing robust Wikipedia API connection...")
-        try:
-            with WikipediaClient(**app_info) as wiki:
-                logger.info("Fetching a random article summary metadata...")
-                article = wiki.get_random_article_summary()
-                title = article["title"]
+    connectors: list[Connector] = []
+    for src in selected_sources:
+        if src == "gutenberg":
+            from .connectors import GutenbergClient
 
-                logger.info(f"Random Article Found: '{title}'")
-                logger.info(f"Summary URL:          {article['url']}")
+            logger.info("Initializing Project Gutenberg Client...")
+            connectors.append(GutenbergClient(book_id=book_id))
+        elif src == "nyt":
+            import os
 
-                logger.info(f"Downloading FULL text content for '{title}'...")
-                full_text = wiki.get_article_full_text(title)
+            from dotenv import load_dotenv
 
-                logger.info(
-                    f"Successfully downloaded full text ({len(full_text)} characters)."
+            from .connectors import NewYorkTimesClient
+
+            load_dotenv()
+
+            api_key = os.environ.get("NYT_API_KEY")
+            if not api_key:
+                logger.error(
+                    "NYT_API_KEY environment variable is not set. "
+                    "Skipping New York Times connector."
                 )
-                with open("article.txt", "w", encoding="utf-8") as file:
-                    file.write(full_text)
-        except WikipediaRateLimitError as e:
-            logger.error(f"Rate Limit: Caught active throttling: {e}")
-            return
-        except WikipediaAPIError as e:
-            logger.error(f"API Error: {e}")
-            return
+                continue
 
-    # 2. Read and parse local file
+            logger.info("Initializing New York Times Client...")
+            connectors.append(NewYorkTimesClient(api_key=api_key))
+        elif src == "quotable":
+            from .connectors import QuotableClient
+
+            logger.info("Initializing Quotable API Client...")
+            tag_list = (
+                [t.strip() for t in tags.split(",")]
+                if tags
+                else ["literature", "wisdom"]
+            )
+            connectors.append(QuotableClient(tags=tag_list))
+        elif src == "poetry_db":
+            from .connectors import PoetryDBClient
+
+            logger.info("Initializing PoetryDB Client...")
+            author_list: str | list[str] | None = None
+            if author:
+                if "," in author:
+                    author_list = [a.strip() for a in author.split(",")]
+                else:
+                    author_list = author
+            connectors.append(PoetryDBClient(author=author_list))
+        elif src == "wikipedia":
+            from .connectors import WikipediaClient
+
+            logger.info("Initializing robust Wikipedia API connection...")
+            connectors.append(
+                WikipediaClient(
+                    app_name="WordOfTheDayApp",
+                    contact_email="fritz@example.com",
+                    version="1.0.0",
+                )
+            )
+
+    if not connectors:
+        logger.error("No valid connectors could be initialized.")
+        return
+
+    from .generator import WordSourceGenerator
+
+    logger.info("Fetching text corpus via WordSourceGenerator...")
     try:
-        content = Path("article.txt").read_text(encoding="utf-8")
-    except FileNotFoundError:
-        logger.error(
-            "The file 'article.txt' does not exist. "
-            "Please place a text file or enable the Wikipedia fetcher."
+        with WordSourceGenerator(connectors) as generator:
+            content = generator.fetch_sources(count=1, ignore_errors=True)
+            if not content:
+                logger.error("No text corpus was retrieved.")
+                return
+            logger.info(f"Downloaded text corpus ({len(content)} chars).")
+    except Exception as e:
+        logger.error(f"API/Connector Error: {e}")
+        return
+
+    # 2. Extract, score, and validate candidates
+    from .pipeline import WordOfTheDayPipeline
+
+    logger.info("Initializing WordOfTheDayPipeline...")
+    with WordOfTheDayPipeline() as pipeline:
+        candidates = pipeline.find_candidates(
+            content,
+            min_score=min_score,
+            max_score=max_score,
+            limit=limit,
+            shuffle=shuffle,
         )
-        return
-    except PermissionError:
-        logger.error("You do not have permission to access 'article.txt'.")
-        return
-
-    raw_words = content.lower().split()
-    clean_pattern = r"[^a-zA-Z\-'’]"
-    processed_words = set()
-
-    for word in raw_words:
-        # Strip punctuation from each independent word
-        cleaned = re.sub(clean_pattern, "", word)
-        # Drop empty strings or single leftover hyphens/apostrophes
-        if cleaned and re.match(r"^[a-z\-'’]+$", cleaned):
-            processed_words.add(cleaned)
 
     logger.info(
-        f"Extracted {len(processed_words)} unique candidate words from article."
-    )
-
-    # 3. Frequency Scoring & Filtering
-    from wordfreq import zipf_frequency
-
-    freq = dict()
-    for word in processed_words:
-        freq[word] = zipf_frequency(word, "en")
-
-    # Filter out words > 4.0 (too common) and <= 2.0 (too rare / proper nouns / typos)
-    goldilocks = {word: score for word, score in freq.items() if 2.0 < score <= 4.0}
-    logger.info(
-        f"Found {len(goldilocks)} words in the goldilocks frequency range "
-        "(2.0 < score <= 4.0)."
-    )
-
-    # Sort by zipf score (ascending - rarest words first)
-    sorted_goldilocks = sorted(goldilocks.items(), key=lambda item: item[1])
-
-    # 4. Dictionary validation & definition fetch
-    # We cap lookups to the top 15 candidates to avoid unnecessary API
-    # overhead and rate-limiting
-    lookup_limit = 15
-    candidates = sorted_goldilocks[:lookup_limit]
-
-    logger.info(
-        "Validating and fetching definitions for the top "
+        f"Validating and fetching definitions for the top "
         f"{len(candidates)} rarest candidate words..."
     )
     print("\n" + "=" * 60)
     print(f"      WORD OF THE DAY CANDIDATES (Top {len(candidates)} Rarest & Valid)")
     print("=" * 60)
 
-    validated_count = 0
-    for word, score in candidates:
-        is_valid, info = get_word_definition(word)
-        if is_valid:
-            validated_count += 1
-            print(f"\n👉 \033[1m{word.upper()}\033[0m (Zipf Score: {score:.2f})")
-            print(f"   Definition: {info}")
-        else:
-            # Log rejected items silently to debug logs
-            logger.debug(f"Rejected word '{word}' ({score:.2f}): {info}")
+    for candidate in candidates:
+        word = candidate.word
+        score = candidate.zipf_score
+        info = candidate.definition
+        try:
+            print(f"\n👉 \033[1m{word.upper()}\033[0m " f"(Zipf Score: {score:.2f})")
+        except UnicodeEncodeError:
+            print(f"\n-> \033[1m{word.upper()}\033[0m " f"(Zipf Score: {score:.2f})")
+        print(f"   Definition: {info}")
 
     print("\n" + "=" * 60)
     logger.info(
         "Pipeline finished. Successfully validated and defined "
-        f"{validated_count} words."
+        f"{len(candidates)} words."
     )

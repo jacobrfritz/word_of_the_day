@@ -7,6 +7,8 @@ from typing import Any, Self
 
 import httpx
 
+from .protocol import Connector
+
 # Configure module logging
 logger = logging.getLogger(__name__)
 
@@ -31,7 +33,7 @@ class WikipediaNetworkError(WikipediaAPIError):
     pass
 
 
-class WikipediaClient:
+class WikipediaClient(Connector):
     """
     A highly robust and compliant Wikipedia API Client using HTTPX.
 
@@ -214,6 +216,17 @@ class WikipediaClient:
         extract = page_data.get("extract", "No content text available.")
         return extract if isinstance(extract, str) else "No content text available."
 
+    def fetch_text_corpus(self) -> str:
+        """
+        Fetches raw text content from a random Wikipedia article.
+
+        Returns:
+            A string containing the full text of a random Wikipedia article.
+        """
+        summary = self.get_random_article_summary()
+        title = summary["title"]
+        return self.get_article_full_text(title)
+
     def close(self) -> None:
         """Cleanly close the underlying HTTPX connection pool."""
         self.client.close()
@@ -231,7 +244,7 @@ class WikipediaClient:
 
 
 # Example Usage showing Context Management
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     # Standard setup using your app credentials
     app_info: dict[str, Any] = {
         "app_name": "WordOfTheDayApp",

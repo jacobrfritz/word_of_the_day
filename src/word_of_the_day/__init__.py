@@ -1,4 +1,14 @@
 # src/word_of_the_day/__init__.py
+from .dictionary import DictionaryClient
+from .generator import WordSourceGenerator
 from .logger import get_logger, setup_logging
+from .pipeline import WordCandidate, WordOfTheDayPipeline
 
-__all__ = ["setup_logging", "get_logger"]
+__all__ = [
+    "setup_logging",
+    "get_logger",
+    "DictionaryClient",
+    "WordSourceGenerator",
+    "WordCandidate",
+    "WordOfTheDayPipeline",
+]
