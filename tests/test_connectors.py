@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
+
 from word_of_the_day.connectors import (
     Connector,
     WikipediaAPIError,

@@ -11,10 +11,13 @@ def run(
     book_id: str | None = None,
     min_score: float = 2.3,
     max_score: float = 4.0,
-    limit: int = 15,
+    limit: int = 3,
     shuffle: bool = False,
     tags: str | None = None,
     author: str | None = None,
+    substack_category: str = "philosophy",
+    substack_limit_pubs: int = 3,
+    substack_limit_posts: int = 3,
 ) -> None:
     """Core application logic demonstrating robust logging, word frequency
 
@@ -38,7 +41,14 @@ def run(
 
     selected_sources = [source] if isinstance(source, str) else list(source)
     if "all" in selected_sources:
-        selected_sources = ["wikipedia", "gutenberg", "nyt", "quotable", "poetry_db"]
+        selected_sources = [
+            "wikipedia",
+            "gutenberg",
+            "nyt",
+            "quotable",
+            "poetry_db",
+            "substack",
+        ]
 
     connectors: list[Connector] = []
     for src in selected_sources:
@@ -98,6 +108,17 @@ def run(
                     version="1.0.0",
                 )
             )
+        elif src == "substack":
+            from .connectors import SubstackClient
+
+            logger.info("Initializing Substack Trending Client...")
+            connectors.append(
+                SubstackClient(
+                    category=substack_category,
+                    limit_publications=substack_limit_pubs,
+                    limit_posts_per_pub=substack_limit_posts,
+                )
+            )
 
     if not connectors:
         logger.error("No valid connectors could be initialized.")
@@ -106,13 +127,28 @@ def run(
     from .generator import WordSourceGenerator
 
     logger.info("Fetching text corpus via WordSourceGenerator...")
+    source_texts: dict[str, str] = {}
     try:
         with WordSourceGenerator(connectors) as generator:
-            content = generator.fetch_sources(count=1, ignore_errors=True)
-            if not content:
-                logger.error("No text corpus was retrieved.")
-                return
-            logger.info(f"Downloaded text corpus ({len(content)} chars).")
+            by_connector = generator.fetch_sources_by_connector(
+                count=1, ignore_errors=True
+            )
+            # Handle dictionary response or fallback to fetch_sources (for mocks)
+            if isinstance(by_connector, dict):
+                for conn, texts in by_connector.items():
+                    conn_name = type(conn).__name__
+                    if conn_name.endswith("Client"):
+                        conn_name = conn_name[:-6]
+                    source_texts[conn_name] = "\n\n".join(texts)
+                content = "\n\n".join(source_texts.values())
+            else:
+                content = generator.fetch_sources(count=1, ignore_errors=True)
+                source_texts["Unknown"] = content
+
+        if not content:
+            logger.error("No text corpus was retrieved.")
+            return
+        logger.info(f"Downloaded text corpus ({len(content)} chars).")
     except Exception as e:
         logger.error(f"API/Connector Error: {e}")
         return
@@ -121,35 +157,43 @@ def run(
     from .pipeline import WordOfTheDayPipeline
 
     logger.info("Initializing WordOfTheDayPipeline...")
-    with WordOfTheDayPipeline() as pipeline:
-        candidates = pipeline.find_candidates(
-            content,
-            min_score=min_score,
-            max_score=max_score,
-            limit=limit,
-            shuffle=shuffle,
-        )
 
-    logger.info(
-        f"Validating and fetching definitions for the top "
-        f"{len(candidates)} rarest candidate words..."
-    )
+    total_validated = 0
     print("\n" + "=" * 60)
-    print(f"      WORD OF THE DAY CANDIDATES (Top {len(candidates)} Rarest & Valid)")
+    print("      WORD OF THE DAY CANDIDATES BY SOURCE")
     print("=" * 60)
 
-    for candidate in candidates:
-        word = candidate.word
-        score = candidate.zipf_score
-        info = candidate.definition
-        try:
-            print(f"\n👉 \033[1m{word.upper()}\033[0m " f"(Zipf Score: {score:.2f})")
-        except UnicodeEncodeError:
-            print(f"\n-> \033[1m{word.upper()}\033[0m " f"(Zipf Score: {score:.2f})")
-        print(f"   Definition: {info}")
+    with WordOfTheDayPipeline() as pipeline:
+        for source_name, text in source_texts.items():
+            if not text.strip():
+                continue
+
+            candidates = pipeline.find_candidates(
+                text,
+                min_score=min_score,
+                max_score=max_score,
+                limit=limit,
+                shuffle=shuffle,
+            )
+
+            print(f"\n--- Source: {source_name} (Top {len(candidates)}) ---")
+            if not candidates:
+                print("   No candidate words found.")
+                continue
+
+            for candidate in candidates:
+                word = candidate.word
+                score = candidate.zipf_score
+                info = candidate.definition
+                try:
+                    print(f"👉 \033[1m{word.upper()}\033[0m (Zipf Score: {score:.2f})")
+                except UnicodeEncodeError:
+                    print(f"-> \033[1m{word.upper()}\033[0m (Zipf Score: {score:.2f})")
+                print(f"   Definition: {info}")
+                total_validated += 1
 
     print("\n" + "=" * 60)
     logger.info(
         "Pipeline finished. Successfully validated and defined "
-        f"{len(candidates)} words."
+        f"{total_validated} words."
     )

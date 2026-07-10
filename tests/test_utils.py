@@ -3,6 +3,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+
 from word_of_the_day.utils import get_text
 
 

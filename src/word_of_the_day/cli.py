@@ -10,7 +10,15 @@ def parse_args(args: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--source",
         nargs="+",
-        choices=["all", "wikipedia", "gutenberg", "nyt", "quotable", "poetry_db"],
+        choices=[
+            "all",
+            "wikipedia",
+            "gutenberg",
+            "nyt",
+            "quotable",
+            "poetry_db",
+            "substack",
+        ],
         default=["all"],
         help=(
             "Data source(s) to fetch the text corpus from (default: all). "
@@ -42,6 +50,33 @@ def parse_args(args: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--substack-category",
+        type=str,
+        default="philosophy",
+        help=(
+            "Substack trending posts category (only used for substack source; "
+            "default: philosophy)."
+        ),
+    )
+    parser.add_argument(
+        "--substack-limit-pubs",
+        type=int,
+        default=3,
+        help=(
+            "Maximum number of trending Substack publications to fetch feeds "
+            "for (default: 3)."
+        ),
+    )
+    parser.add_argument(
+        "--substack-limit-posts",
+        type=int,
+        default=3,
+        help=(
+            "Maximum number of latest posts to parse per Substack publication "
+            "feed (default: 3)."
+        ),
+    )
+    parser.add_argument(
         "--min-score",
         type=float,
         default=2.3,
@@ -56,8 +91,11 @@ def parse_args(args: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--limit",
         type=int,
-        default=15,
-        help="Number of word candidates to validate and output (default: 15).",
+        default=3,
+        help=(
+            "Number of word candidates to validate and output per datasource "
+            "(default: 3)."
+        ),
     )
     parser.add_argument(
         "--shuffle",
@@ -81,6 +119,9 @@ def main() -> None:
         shuffle=parsed_args.shuffle,
         tags=parsed_args.tags,
         author=parsed_args.author,
+        substack_category=parsed_args.substack_category,
+        substack_limit_pubs=parsed_args.substack_limit_pubs,
+        substack_limit_posts=parsed_args.substack_limit_posts,
     )
 
 

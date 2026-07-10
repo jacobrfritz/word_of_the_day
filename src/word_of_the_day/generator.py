@@ -86,7 +86,7 @@ class WordSourceGenerator:
             for i in range(num_to_fetch):
                 try:
                     logger.debug(
-                        f"Fetching text corpus {i+1}/{num_to_fetch}"
+                        f"Fetching text corpus {i + 1}/{num_to_fetch}"
                         f" from {type(connector).__name__}..."
                     )
                     text = connector.fetch_text_corpus()
@@ -95,7 +95,7 @@ class WordSourceGenerator:
                 except Exception as exc:
                     logger.error(
                         f"Error fetching from connector {type(connector).__name__} "
-                        f"at attempt {i+1}: {exc}"
+                        f"at attempt {i + 1}: {exc}"
                     )
                     if not ignore_errors:
                         raise

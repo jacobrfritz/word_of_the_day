@@ -4,6 +4,7 @@ import os
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from word_of_the_day import main
 
 
@@ -34,11 +35,13 @@ def test_run(capsys: pytest.CaptureFixture[str]) -> None:
 @patch("word_of_the_day.connectors.NewYorkTimesClient")
 @patch("word_of_the_day.connectors.QuotableClient")
 @patch("word_of_the_day.connectors.PoetryDBClient")
+@patch("word_of_the_day.connectors.SubstackClient")
 @patch("word_of_the_day.generator.WordSourceGenerator")
 @patch("word_of_the_day.pipeline.WordOfTheDayPipeline")
 def test_run_default(
     mock_pipeline_class: MagicMock,
     mock_generator_class: MagicMock,
+    mock_substack_class: MagicMock,
     mock_poetry_class: MagicMock,
     mock_quotable_class: MagicMock,
     mock_nyt_class: MagicMock,
@@ -56,6 +59,8 @@ def test_run_default(
     mock_quotable_class.return_value = mock_quotable
     mock_poetry = MagicMock()
     mock_poetry_class.return_value = mock_poetry
+    mock_substack = MagicMock()
+    mock_substack_class.return_value = mock_substack
 
     mock_generator = MagicMock()
     mock_generator.__enter__.return_value = mock_generator
@@ -79,6 +84,11 @@ def test_run_default(
     mock_nyt_class.assert_called_once_with(api_key="test_key")
     mock_quotable_class.assert_called_once()
     mock_poetry_class.assert_called_once()
+    mock_substack_class.assert_called_once_with(
+        category="philosophy",
+        limit_publications=3,
+        limit_posts_per_pub=3,
+    )
     mock_generator_class.assert_called_once_with(
         [
             mock_wiki,
@@ -86,6 +96,7 @@ def test_run_default(
             mock_nyt,
             mock_quotable,
             mock_poetry,
+            mock_substack,
         ]
     )
     captured = capsys.readouterr()
@@ -323,11 +334,13 @@ def test_main_multiple_sources(
 @patch("word_of_the_day.connectors.NewYorkTimesClient")
 @patch("word_of_the_day.connectors.QuotableClient")
 @patch("word_of_the_day.connectors.PoetryDBClient")
+@patch("word_of_the_day.connectors.SubstackClient")
 @patch("word_of_the_day.generator.WordSourceGenerator")
 @patch("word_of_the_day.pipeline.WordOfTheDayPipeline")
 def test_main_all_sources(
     mock_pipeline_class: MagicMock,
     mock_generator_class: MagicMock,
+    mock_substack_class: MagicMock,
     mock_poetry_class: MagicMock,
     mock_quotable_class: MagicMock,
     mock_nyt_class: MagicMock,
@@ -345,6 +358,8 @@ def test_main_all_sources(
     mock_quotable_class.return_value = mock_quotable
     mock_poetry = MagicMock()
     mock_poetry_class.return_value = mock_poetry
+    mock_substack = MagicMock()
+    mock_substack_class.return_value = mock_substack
 
     mock_generator = MagicMock()
     mock_generator.__enter__.return_value = mock_generator
@@ -368,6 +383,11 @@ def test_main_all_sources(
     mock_nyt_class.assert_called_once_with(api_key="test_key")
     mock_quotable_class.assert_called_once()
     mock_poetry_class.assert_called_once()
+    mock_substack_class.assert_called_once_with(
+        category="philosophy",
+        limit_publications=3,
+        limit_posts_per_pub=3,
+    )
     mock_generator_class.assert_called_once_with(
         [
             mock_wiki,
@@ -375,6 +395,7 @@ def test_main_all_sources(
             mock_nyt,
             mock_quotable,
             mock_poetry,
+            mock_substack,
         ]
     )
     captured = capsys.readouterr()

@@ -2,6 +2,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from word_of_the_day.connectors import GutenbergClient
 from word_of_the_day.connectors.gutenberg import DEFAULT_CLASSIC_IDS
 from word_of_the_day.generator import WordSourceGenerator

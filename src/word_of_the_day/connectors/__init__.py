@@ -23,6 +23,12 @@ from .quotable import (
     QuotableNetworkError,
     QuotableRateLimitError,
 )
+from .substack import (
+    SubstackAPIError,
+    SubstackClient,
+    SubstackNetworkError,
+    SubstackRateLimitError,
+)
 from .wikipedia import (
     WikipediaAPIError,
     WikipediaClient,
@@ -52,4 +58,8 @@ __all__ = [
     "QuotableClient",
     "QuotableNetworkError",
     "QuotableRateLimitError",
+    "SubstackAPIError",
+    "SubstackClient",
+    "SubstackNetworkError",
+    "SubstackRateLimitError",
 ]

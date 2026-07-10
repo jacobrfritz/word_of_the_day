@@ -2,6 +2,7 @@ import urllib.error
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from word_of_the_day.connectors import (
     Connector,
     GutenbergAPIError,

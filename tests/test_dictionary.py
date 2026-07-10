@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 import requests
+
 from word_of_the_day.dictionary import DictionaryClient
 
 
