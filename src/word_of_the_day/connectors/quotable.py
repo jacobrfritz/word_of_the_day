@@ -1,4 +1,5 @@
 import logging
+import os
 import random
 import time
 from collections.abc import Callable
@@ -63,7 +64,9 @@ class QuotableClient(Connector):
         self.quotes_per_fetch = quotes_per_fetch
         self.tags = tags
 
-        resolved_base_url = base_url or self.BASE_URL
+        resolved_base_url = base_url or os.environ.get(
+            "QUOTABLE_BASE_URL", self.BASE_URL
+        )
 
         headers = {
             "Accept": "application/json; charset=utf-8",

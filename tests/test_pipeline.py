@@ -222,3 +222,37 @@ def test_pipeline_validate_candidates_skips_invalid_to_fulfill_limit() -> None:
     assert len(results) == 2
     assert results[0].word == "rareword1"
     assert results[1].word == "rareword3"
+
+
+def test_pipeline_with_custom_scorer() -> None:
+    """Verifies that injecting a custom WordScorer changes scoring and sorting."""
+
+    class MockReverseScorer:
+        @property
+        def higher_is_better(self) -> bool:
+            return True  # Sort descending (highest first)
+
+        def score(self, word: str) -> float:
+            # Score is word length
+            return float(len(word))
+
+    # "solitude" (8), "serendipity" (11)
+    # Both are within default Zipf range (2.3 < score <= 4.0)
+    mock_dict_client = MagicMock(spec=DictionaryClient)
+    mock_dict_client.get_word_definition.return_value = (True, "mock definition")
+
+    pipeline = WordOfTheDayPipeline(
+        stop_words=set(),
+        dictionary_client=mock_dict_client,
+        scorer=MockReverseScorer(),
+    )
+
+    candidates = pipeline.find_candidates("solitude serendipity")
+
+    # "serendipity" has length 11, "solitude" has length 8.
+    # Because higher_is_better = True, "serendipity" (longest) should be sorted first.
+    assert len(candidates) == 2
+    assert candidates[0].word == "serendipity"
+    assert candidates[0].score == 11.0
+    assert candidates[1].word == "solitude"
+    assert candidates[1].score == 8.0

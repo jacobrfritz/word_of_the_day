@@ -1,4 +1,5 @@
 import logging
+import os
 import random
 import time
 import urllib.parse
@@ -86,17 +87,27 @@ class PoetryDBClient(Connector):
         self.max_retries = max_retries
         self.timeout = timeout
 
+        app_name = os.environ.get("POETRY_DB_APP_NAME") or os.environ.get(
+            "APP_NAME", "WordOfTheDay"
+        )
+        version = os.environ.get("POETRY_DB_VERSION") or os.environ.get(
+            "APP_VERSION", "1.0"
+        )
+        contact_email = os.environ.get("POETRY_DB_CONTACT_EMAIL") or os.environ.get(
+            "CONTACT_EMAIL", "fritz@example.com"
+        )
+
         # Compliant headers
         headers = {
             "User-Agent": (
-                f"WordOfTheDay/1.0 (contact: fritz@example.com)"
+                f"{app_name}/{version} (contact: {contact_email})"
                 f" httpx/{httpx.__version__}"
             ),
             "Accept": "application/json; charset=utf-8",
         }
 
         self.client = httpx.Client(
-            base_url=self.BASE_URL,
+            base_url=os.environ.get("POETRY_DB_BASE_URL", self.BASE_URL),
             headers=headers,
             timeout=httpx.Timeout(timeout),
             follow_redirects=True,

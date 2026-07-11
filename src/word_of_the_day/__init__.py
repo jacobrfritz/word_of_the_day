@@ -3,6 +3,7 @@ from .dictionary import DictionaryClient
 from .generator import WordSourceGenerator
 from .logger import get_logger, setup_logging
 from .pipeline import WordCandidate, WordOfTheDayPipeline
+from .scorers import CompositeScorer, EmbeddingScorer, WordScorer, ZipfScorer
 
 __all__ = [
     "setup_logging",
@@ -11,4 +12,8 @@ __all__ = [
     "WordSourceGenerator",
     "WordCandidate",
     "WordOfTheDayPipeline",
+    "WordScorer",
+    "ZipfScorer",
+    "EmbeddingScorer",
+    "CompositeScorer",
 ]

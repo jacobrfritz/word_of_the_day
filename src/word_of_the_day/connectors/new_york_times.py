@@ -1,6 +1,7 @@
 import calendar
 import datetime
 import logging
+import os
 import random
 import time
 from collections.abc import Callable
@@ -79,7 +80,7 @@ class NewYorkTimesClient(Connector):
         }
 
         self.client = httpx.Client(
-            base_url=self.BASE_URL,
+            base_url=os.environ.get("NYT_BASE_URL", self.BASE_URL),
             headers=headers,
             timeout=httpx.Timeout(timeout),
             http2=True,

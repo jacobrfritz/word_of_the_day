@@ -1,4 +1,5 @@
 import logging
+import os
 import random
 import re
 import time
@@ -76,7 +77,7 @@ class SubstackClient(Connector):
 
         # Do not use http2=True to avoid potential Cloudflare challenge triggers
         self.client = httpx.Client(
-            base_url=self.BASE_URL,
+            base_url=os.environ.get("SUBSTACK_BASE_URL", self.BASE_URL),
             headers=headers,
             timeout=httpx.Timeout(timeout),
             follow_redirects=True,

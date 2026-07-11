@@ -8,6 +8,7 @@ from wordfreq import zipf_frequency
 
 from .dictionary import DictionaryClient
 from .logger import get_logger
+from .scorers import WordScorer, ZipfScorer
 
 logger = get_logger(__name__)
 
@@ -22,6 +23,7 @@ class WordCandidate:
     word: str
     zipf_score: float
     definition: str
+    score: float | None = None
 
 
 class WordOfTheDayPipeline:
@@ -34,6 +36,7 @@ class WordOfTheDayPipeline:
         self,
         stop_words: set[str] | list[str] | Path | str | None = None,
         dictionary_client: DictionaryClient | None = None,
+        scorer: WordScorer | None = None,
     ) -> None:
         """
         Initialize the pipeline.
@@ -44,10 +47,13 @@ class WordOfTheDayPipeline:
                         'stop_words.txt' from the project root.
             dictionary_client: An optional DictionaryClient instance. If not
                                provided, a default DictionaryClient will be created.
+            scorer: An optional WordScorer instance to score candidates.
+                    Defaults to ZipfScorer.
         """
         self.stop_words = self._load_stop_words(stop_words)
         self._external_client = dictionary_client is not None
         self.dictionary_client = dictionary_client or DictionaryClient()
+        self.scorer = scorer or ZipfScorer()
 
     def _load_stop_words(
         self, stop_words: set[str] | list[str] | Path | str | None
@@ -115,17 +121,24 @@ class WordOfTheDayPipeline:
         max_score: float = 4.0,
     ) -> list[tuple[str, float]]:
         """
-        Scores the words using Zipf frequency, filters them within the 'goldilocks'
-        range, and sorts them ascending (rarest first).
+        Filters words within the Zipf frequency 'goldilocks' range, scores them
+        using the configured scorer, and sorts them appropriately.
         """
-        scored = []
+        # Step 1: Pre-filter by Zipf score (goldilocks range) for efficiency
+        filtered_words = []
         for word in words:
-            score = zipf_frequency(word, "en")
-            if min_score < score <= max_score:
-                scored.append((word, score))
+            z_score = zipf_frequency(word, "en")
+            if min_score < z_score <= max_score:
+                filtered_words.append(word)
 
-        # Sort by score ascending (rarest first)
-        scored.sort(key=lambda item: item[1])
+        # Step 2: Score remaining words using the injected scorer
+        scored = []
+        for word in filtered_words:
+            scored.append((word, self.scorer.score(word)))
+
+        # Step 3: Sort candidates based on scorer preference
+        reverse = self.scorer.higher_is_better
+        scored.sort(key=lambda item: item[1], reverse=reverse)
         return scored
 
     def validate_candidates(
@@ -144,8 +157,23 @@ class WordOfTheDayPipeline:
                 break
             is_valid, info = self.dictionary_client.get_word_definition(word)
             if is_valid:
+                # If using standard ZipfScorer, the score *is* the zipf score.
+                # Otherwise (e.g. EmbeddingScorer), we fetch the real Zipf score
+                # for display and set the 'score' attribute to the similarity score.
+                if isinstance(self.scorer, ZipfScorer):
+                    zipf_val = score
+                    custom_score = None
+                else:
+                    zipf_val = zipf_frequency(word, "en")
+                    custom_score = score
+
                 validated_candidates.append(
-                    WordCandidate(word=word, zipf_score=score, definition=info)
+                    WordCandidate(
+                        word=word,
+                        zipf_score=zipf_val,
+                        definition=info,
+                        score=custom_score,
+                    )
                 )
             else:
                 logger.debug(f"Rejected word '{word}' ({score:.2f}): {info}")

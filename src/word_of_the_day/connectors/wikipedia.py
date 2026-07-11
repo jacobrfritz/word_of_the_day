@@ -1,4 +1,5 @@
 import logging
+import os
 import random
 import time
 from collections.abc import Callable
@@ -82,7 +83,7 @@ class WikipediaClient(Connector):
         # Initialize an HTTPX Client with HTTP/2 and redirect-following enabled.
         # This is required because Wikipedia's random endpoint sends a 303 redirect.
         self.client = httpx.Client(
-            base_url=self.BASE_URL,
+            base_url=os.environ.get("WIKIPEDIA_BASE_URL", self.BASE_URL),
             headers=headers,
             timeout=httpx.Timeout(timeout),
             http2=True,

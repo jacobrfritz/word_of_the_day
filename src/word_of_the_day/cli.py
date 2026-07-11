@@ -105,6 +105,54 @@ def parse_args(args: list[str]) -> argparse.Namespace:
             "candidates each run."
         ),
     )
+    parser.add_argument(
+        "--use-embeddings",
+        action="store_true",
+        default=True,
+        help=(
+            "Use sentence embeddings similarity against seed words "
+            "to rank candidates (default: True)."
+        ),
+    )
+    parser.add_argument(
+        "--no-embeddings",
+        dest="use_embeddings",
+        action="store_false",
+        help="Disable sentence embeddings similarity and use Zipf scoring only.",
+    )
+    parser.add_argument(
+        "--embedding-model",
+        type=str,
+        default="all-MiniLM-L6-v2",
+        help=(
+            "SentenceTransformer model name to use for embeddings "
+            "(default: all-MiniLM-L6-v2)."
+        ),
+    )
+    parser.add_argument(
+        "--embedding-k",
+        type=int,
+        default=5,
+        help=(
+            "Number of nearest neighbors to average for embedding similarity "
+            "(default: 5)."
+        ),
+    )
+    parser.add_argument(
+        "--seed-csv",
+        type=str,
+        default=None,
+        help="Path to the seed words CSV file (default: 30_days_words.csv in root).",
+    )
+    parser.add_argument(
+        "--cache-npz",
+        type=str,
+        default=None,
+        help=(
+            "Path to the precomputed embeddings cache file "
+            "(default: 30_days_words_embeddings.npz)."
+        ),
+    )
     return parser.parse_args(args)
 
 
@@ -122,6 +170,11 @@ def main() -> None:
         substack_category=parsed_args.substack_category,
         substack_limit_pubs=parsed_args.substack_limit_pubs,
         substack_limit_posts=parsed_args.substack_limit_posts,
+        use_embeddings=parsed_args.use_embeddings,
+        embedding_model=parsed_args.embedding_model,
+        embedding_k=parsed_args.embedding_k,
+        seed_csv_path=parsed_args.seed_csv,
+        cache_npz_path=parsed_args.cache_npz,
     )
 
 

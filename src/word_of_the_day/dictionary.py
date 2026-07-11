@@ -1,3 +1,4 @@
+import os
 import urllib.parse
 from types import TracebackType
 from typing import Self
@@ -20,6 +21,7 @@ class DictionaryClient:
     def __init__(self, timeout: float = 5.0) -> None:
         self.timeout = timeout
         self.session = requests.Session()
+        self.base_url = os.environ.get("DICTIONARY_BASE_URL", self.BASE_URL)
 
     def get_word_definition(self, word: str) -> tuple[bool, str]:
         """
@@ -34,7 +36,7 @@ class DictionaryClient:
         """
         # URL encode the word to handle any special characters safely
         safe_word = urllib.parse.quote(word.lower().strip())
-        url = f"{self.BASE_URL}{safe_word}"
+        url = f"{self.base_url}{safe_word}"
 
         try:
             # 5-second timeout to prevent the pipeline from hanging on network issues

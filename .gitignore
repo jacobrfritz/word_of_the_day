@@ -211,3 +211,11 @@ __marimo__/
 texts/
 # Runtime log output
 logs/
+
+# macOS metadata files
+.DS_Store
+
+# Data caches and generated files
+*.npz
+*.csv
+
