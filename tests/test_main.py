@@ -208,7 +208,7 @@ def test_main_nyt(
 
 
 @patch("word_of_the_day.connectors.NewYorkTimesClient")
-@patch("dotenv.load_dotenv")
+@patch("word_of_the_day.main.load_dotenv")
 def test_main_nyt_missing_api_key(
     mock_load_dotenv: MagicMock,
     mock_nyt_class: MagicMock,

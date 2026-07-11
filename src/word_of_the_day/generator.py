@@ -1,4 +1,5 @@
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from types import TracebackType
 from typing import Any, Self
 
@@ -79,10 +80,9 @@ class WordSourceGenerator:
         """
         results: dict[Connector, list[str]] = {}
 
-        for connector in self.connectors:
+        def fetch_from_connector(connector: Connector) -> tuple[Connector, list[str]]:
             num_to_fetch = self._get_count_for_connector(connector, count)
             texts: list[str] = []
-
             for i in range(num_to_fetch):
                 try:
                     logger.debug(
@@ -99,7 +99,19 @@ class WordSourceGenerator:
                     )
                     if not ignore_errors:
                         raise
-            results[connector] = texts
+            return connector, texts
+
+        if not self.connectors:
+            return results
+
+        with ThreadPoolExecutor(max_workers=len(self.connectors)) as executor:
+            futures = [
+                executor.submit(fetch_from_connector, connector)
+                for connector in self.connectors
+            ]
+            for future in futures:
+                connector, texts = future.result()
+                results[connector] = texts
 
         return results
 
