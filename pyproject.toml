@@ -5,6 +5,7 @@ description = "A default Python project template using uv."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "beautifulsoup4>=4.15.0",
     "gutenbergpy>=0.3.5",
     "httpx[http2]>=0.28.1",
     "numpy>=2.4.4",

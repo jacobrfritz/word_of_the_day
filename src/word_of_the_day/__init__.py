@@ -4,6 +4,7 @@ from .generator import WordSourceGenerator
 from .logger import get_logger, setup_logging
 from .pipeline import WordCandidate, WordOfTheDayPipeline
 from .scorers import CompositeScorer, EmbeddingScorer, WordScorer, ZipfScorer
+from .storage import Storage, WordOfTheDayRecord
 
 __all__ = [
     "setup_logging",
@@ -16,4 +17,6 @@ __all__ = [
     "ZipfScorer",
     "EmbeddingScorer",
     "CompositeScorer",
+    "Storage",
+    "WordOfTheDayRecord",
 ]

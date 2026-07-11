@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Word of the Day Portal</title>
+  <!-- Modern Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+  
+  <style>
+    /* Design System & Variables */
+    :root {
+      --bg-gradient: linear-gradient(135deg, #090d16, #120e29, #05050f);
+      --glass-bg: rgba(18, 20, 38, 0.45);
+      --glass-border: rgba(99, 102, 241, 0.15);
+      --glass-highlight: rgba(255, 255, 255, 0.03);
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --primary-gradient: linear-gradient(135deg, #818cf8, #a78bfa);
+      --accent-gradient: linear-gradient(135deg, #f472b6, #fb7185);
+      --success-gradient: linear-gradient(135deg, #34d399, #059669);
+      --accent-color: #818cf8;
+      --glow-shadow: 0 8px 32px 0 rgba(99, 102, 241, 0.15);
+      --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* Reset & Base Styles */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg-gradient);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+      line-height: 1.6;
+    }
+
+    h1, h2, h3, .word-title {
+      font-family: 'Outfit', sans-serif;
+    }
+
+    /* Layout Containers */
+    header {
+      padding: 2.5rem 1.5rem 1.5rem;
+      text-align: center;
+      position: relative;
+    }
+
+    header h1 {
+      font-size: 2.5rem;
+      font-weight: 800;
+      background: var(--primary-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: -0.03em;
+      margin-bottom: 0.5rem;
+    }
+
+    header p {
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+      font-weight: 300;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    main {
+      flex: 1;
+      max-width: 1200px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 0 1.5rem 4rem;
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 2rem;
+      align-items: start;
+    }
+
+    @media (max-width: 900px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Glassmorphism Styles */
+    .glass-card {
+      background: var(--glass-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--glass-border);
+      border-radius: 24px;
+      padding: 2.5rem;
+      box-shadow: var(--glow-shadow);
+      background-image: linear-gradient(to bottom right, var(--glass-highlight), transparent);
+      transition: var(--transition-smooth);
+    }
+
+    /* Active Word Display */
+    .active-word-container {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .active-word-container::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      right: -50%;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle, rgba(99, 102, 241, 0.08) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .date-badge {
+      display: inline-flex;
+      align-self: flex-start;
+      padding: 0.5rem 1rem;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 9999px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .word-header {
+      display: flex;
+      align-items: baseline;
+      gap: 1rem;
+      flex-wrap: wrap;
+      z-index: 1;
+    }
+
+    .word-title {
+      font-size: 3.8rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      text-transform: capitalize;
+      background: var(--primary-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      line-height: 1.1;
+    }
+
+    .part-of-speech {
+      font-size: 0.9rem;
+      font-style: italic;
+      color: var(--accent-color);
+      padding: 0.2rem 0.6rem;
+      border-radius: 6px;
+      background: rgba(99, 102, 241, 0.1);
+      border: 1px solid rgba(99, 102, 241, 0.2);
+      text-transform: lowercase;
+      font-weight: 500;
+    }
+
+    .definition-box {
+      font-size: 1.15rem;
+      color: var(--text-primary);
+      line-height: 1.7;
+      border-left: 3px solid var(--accent-color);
+      padding-left: 1.25rem;
+      margin: 0.5rem 0;
+      z-index: 1;
+    }
+
+    .meta-details {
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      padding-top: 1.5rem;
+      margin-top: 0.5rem;
+      z-index: 1;
+    }
+
+    .meta-item {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .meta-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+    }
+
+    .meta-value {
+      font-size: 0.95rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+
+    /* Date Lookup Controls */
+    .control-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .lookup-section {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .lookup-section label {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      letter-spacing: 0.02em;
+    }
+
+    .date-input-group {
+      display: flex;
+      gap: 0.75rem;
+    }
+
+    input[type="date"] {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--glass-border);
+      border-radius: 12px;
+      padding: 0.75rem 1rem;
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 0.95rem;
+      outline: none;
+      transition: var(--transition-smooth);
+    }
+
+    input[type="date"]:focus {
+      border-color: rgba(99, 102, 241, 0.5);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    /* Styled Button */
+    .btn {
+      background: var(--primary-gradient);
+      color: #0f172a;
+      border: none;
+      border-radius: 12px;
+      padding: 0.75rem 1.5rem;
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      outline: none;
+      transition: var(--transition-smooth);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(99, 102, 241, 0.3);
+    }
+
+    .btn:active {
+      transform: translateY(0);
+    }
+
+    /* History Sidebar */
+    .history-card {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      max-height: 500px;
+    }
+
+    .history-card h2 {
+      font-size: 1.3rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      padding-bottom: 0.75rem;
+    }
+
+    .history-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      overflow-y: auto;
+      padding-right: 0.5rem;
+      flex: 1;
+    }
+
+    /* Custom Scrollbar for history */
+    .history-list::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .history-list::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .history-list::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 9999px;
+    }
+
+    .history-list::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.25);
+    }
+
+    .history-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.85rem 1.25rem;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.03);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: var(--transition-smooth);
+    }
+
+    .history-item:hover {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(99, 102, 241, 0.25);
+      transform: translateX(4px);
+    }
+
+    .history-item.active {
+      background: rgba(99, 102, 241, 0.12);
+      border-color: rgba(99, 102, 241, 0.4);
+    }
+
+    .hist-word {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.05rem;
+      font-weight: 600;
+      text-transform: capitalize;
+      color: var(--text-primary);
+    }
+
+    .hist-date {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    /* Loading and Empty States */
+    .loading-spinner {
+      display: inline-block;
+      width: 1.5rem;
+      height: 1.5rem;
+      border: 2px solid rgba(255, 255, 255, 0.1);
+      border-radius: 50%;
+      border-top-color: var(--accent-color);
+      animation: spin 0.8s linear infinite;
+    }
+
+    .spinner-overlay {
+      display: none;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(9, 13, 22, 0.6);
+      backdrop-filter: blur(4px);
+      align-items: center;
+      justify-content: center;
+      border-radius: 24px;
+      z-index: 10;
+    }
+
+    .spinner-overlay.active {
+      display: flex;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .error-msg {
+      color: #f87171;
+      font-size: 0.9rem;
+      margin-top: 0.5rem;
+      display: none;
+    }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      padding: 2rem;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      font-weight: 300;
+      border-top: 1px solid rgba(255, 255, 255, 0.03);
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>Word of the Day</h1>
+    <p>Daily Vocabulary Analytics Portal</p>
+  </header>
+
+  <main>
+    <!-- Left Section: Main Word Card & Date Lookup -->
+    <div class="control-panel">
+      <!-- Active Word Showcase -->
+      <section class="glass-card active-word-container" id="wordCard">
+        <div class="spinner-overlay" id="loadingOverlay">
+          <div class="loading-spinner"></div>
+        </div>
+        
+        <span class="date-badge" id="wordDate">Loading...</span>
+        
+        <div class="word-header">
+          <h2 class="word-title" id="wordText">-</h2>
+          <span class="part-of-speech" id="wordPos">unknown</span>
+        </div>
+        
+        <p class="definition-box" id="wordDefinition">
+          Please wait while we load today's vocabulary word.
+        </p>
+        
+        <div class="meta-details">
+          <div class="meta-item">
+            <span class="meta-label">Discovery Source</span>
+            <span class="meta-value" id="wordSource">-</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Quality Score</span>
+            <span class="meta-value" id="wordScore">-</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Date Selection Lookup -->
+      <section class="glass-card lookup-section">
+        <label for="lookupDate">Explore Historical Words</label>
+        <div class="date-input-group">
+          <input type="date" id="lookupDate">
+          <button class="btn" id="lookupBtn">
+            <span>Lookup</span>
+          </button>
+        </div>
+        <div class="error-msg" id="errorContainer">No Word of the Day chosen for this date.</div>
+      </section>
+    </div>
+
+    <!-- Right Section: Sidebar History List -->
+    <section class="glass-card history-card">
+      <h2>Recent Selections</h2>
+      <div class="history-list" id="historyList">
+        <!-- Dynamic History Items -->
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Powered by FastAPI & SQLite. All word definitions validated via Free Dictionary API.</p>
+  </footer>
+
+  <script>
+    // Get YYYY-MM-DD string in local timezone
+    function getLocalDateString() {
+      const d = new Date();
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    // State management
+    let activeDate = getLocalDateString();
+    const elements = {
+      wordCard: document.getElementById('wordCard'),
+      wordDate: document.getElementById('wordDate'),
+      wordText: document.getElementById('wordText'),
+      wordPos: document.getElementById('wordPos'),
+      wordDefinition: document.getElementById('wordDefinition'),
+      wordSource: document.getElementById('wordSource'),
+      wordScore: document.getElementById('wordScore'),
+      lookupDate: document.getElementById('lookupDate'),
+      lookupBtn: document.getElementById('lookupBtn'),
+      historyList: document.getElementById('historyList'),
+      errorContainer: document.getElementById('errorContainer'),
+      loadingOverlay: document.getElementById('loadingOverlay')
+    };
+
+    // Helper to format date string nicely
+    function formatFriendlyDate(dateStr) {
+      const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+      // Parse local timezone date correctly to avoid offset errors
+      const parts = dateStr.split('-');
+      const date = new Date(parts[0], parts[1] - 1, parts[2]);
+      return date.toLocaleDateString('en-US', options);
+    }
+
+    // Show/hide loader
+    function setLoader(state) {
+      if (state) {
+        elements.loadingOverlay.classList.add('active');
+      } else {
+        elements.loadingOverlay.classList.remove('active');
+      }
+    }
+
+    // Fetch and display specific word. Returns true on success, false on failure.
+    async function loadWord(date) {
+      setLoader(true);
+      elements.errorContainer.style.display = 'none';
+      try {
+        const response = await fetch(`/api/word?date=${date}`);
+        if (!response.ok) {
+          throw new Error('Not found');
+        }
+        const data = await response.json();
+        
+        // Update UI
+        activeDate = date;
+        elements.wordDate.textContent = formatFriendlyDate(data.date);
+        
+        // Parse definition and part of speech
+        let wordStr = data.word;
+        let defStr = data.definition || 'No definition found.';
+        let posStr = 'unknown';
+        
+        // Definition format is typically: "(partOfSpeech) Definition text"
+        const posMatch = defStr.match(/^\(([^)]+)\)\s*(.*)/);
+        if (posMatch) {
+          posStr = posMatch[1];
+          defStr = posMatch[2];
+        }
+        
+        elements.wordText.textContent = wordStr;
+        elements.wordPos.textContent = posStr;
+        elements.wordDefinition.textContent = defStr;
+        elements.wordSource.textContent = data.source;
+        
+        // Format Score nicely
+        let scoreVal = '-';
+        if (data.score !== null && data.score !== undefined) {
+          scoreVal = data.score.toFixed(4);
+        } else if (data.extra_info && data.extra_info.zipf_score) {
+          scoreVal = `Zipf: ${data.extra_info.zipf_score.toFixed(2)}`;
+        }
+        elements.wordScore.textContent = scoreVal;
+        
+        // Highlight in history sidebar
+        updateSidebarSelection(date);
+        return true;
+      } catch (err) {
+        elements.errorContainer.style.display = 'block';
+        elements.errorContainer.textContent = `No Word of the Day was chosen for ${formatFriendlyDate(date)}.`;
+        // Keep active fields as-is, just clear loader
+        return false;
+      } finally {
+        setLoader(false);
+      }
+    }
+
+    // Fetch and update recent word list
+    async function loadHistory() {
+      try {
+        const response = await fetch('/api/history?limit=30');
+        if (!response.ok) return;
+        const data = await response.json();
+        
+        elements.historyList.innerHTML = '';
+        if (data.length === 0) {
+          elements.historyList.innerHTML = '<div style="color: var(--text-muted); font-size: 0.9rem; text-align: center; padding: 1rem;">No history found yet. Run the selector script!</div>';
+          return;
+        }
+        
+        data.forEach(item => {
+          const div = document.createElement('div');
+          div.className = `history-item ${item.date === activeDate ? 'active' : ''}`;
+          div.dataset.date = item.date;
+          
+          const parts = item.date.split('-');
+          const shortDate = `${parts[1]}/${parts[2]}`; // MM/DD
+          
+          div.innerHTML = `
+            <span class="hist-word">${item.word}</span>
+            <span class="hist-date">${shortDate}</span>
+          `;
+          
+          div.addEventListener('click', () => {
+            loadWord(item.date);
+          });
+          
+          elements.historyList.appendChild(div);
+        });
+      } catch (err) {
+        console.error('Error fetching history:', err);
+      }
+    }
+
+    // Sync active sidebar item class
+    function updateSidebarSelection(date) {
+      document.querySelectorAll('.history-item').forEach(item => {
+        if (item.dataset.date === date) {
+          item.classList.add('active');
+        } else {
+          item.classList.remove('active');
+        }
+      });
+    }
+
+    // Initialize application events
+    document.addEventListener('DOMContentLoaded', () => {
+      // Set default input date to today
+      const todayStr = getLocalDateString();
+      elements.lookupDate.value = todayStr;
+      
+      // Load today's word, fallback to most recent if not found
+      loadWord(todayStr).then(async (success) => {
+        if (!success) {
+          try {
+            const historyResponse = await fetch('/api/history?limit=1');
+            if (historyResponse.ok) {
+              const historyData = await historyResponse.json();
+              if (historyData && historyData.length > 0) {
+                // Clear the error message since we are showing the latest historical word
+                elements.errorContainer.style.display = 'none';
+                await loadWord(historyData[0].date);
+              }
+            }
+          } catch (historyErr) {
+            console.error('Failed to load fallback historical word:', historyErr);
+          }
+        }
+        loadHistory();
+      });
+
+      // Bind Lookup button click
+      elements.lookupBtn.addEventListener('click', () => {
+        const selectedDate = elements.lookupDate.value;
+        if (selectedDate) {
+          loadWord(selectedDate);
+        }
+      });
+
+      // Bind Enter key on date input
+      elements.lookupDate.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          const selectedDate = elements.lookupDate.value;
+          if (selectedDate) {
+            loadWord(selectedDate);
+          }
+        }
+      });
+    });
+  </script>
+</body>
+</html>

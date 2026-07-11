@@ -153,6 +153,34 @@ def parse_args(args: list[str]) -> argparse.Namespace:
             "(default: 30_days_words_embeddings.npz)."
         ),
     )
+    parser.add_argument(
+        "--mode",
+        type=str,
+        choices=["list", "auto", "interactive", "set", "api"],
+        default="list",
+        help=(
+            "Operation mode: 'list' candidates, 'auto' select, "
+            "'interactive' select, 'set' manually, or start 'api' server."
+        ),
+    )
+    parser.add_argument(
+        "--date",
+        type=str,
+        default=None,
+        help="Date for selection in YYYY-MM-DD format (defaults to today).",
+    )
+    parser.add_argument(
+        "--word",
+        type=str,
+        default=None,
+        help="Word to manually assign to the specified date (used with --mode set).",
+    )
+    parser.add_argument(
+        "--db-path",
+        type=str,
+        default=None,
+        help="Custom path to the SQLite history database.",
+    )
     return parser.parse_args(args)
 
 
@@ -175,6 +203,10 @@ def main() -> None:
         embedding_k=parsed_args.embedding_k,
         seed_csv_path=parsed_args.seed_csv,
         cache_npz_path=parsed_args.cache_npz,
+        mode=parsed_args.mode,
+        date=parsed_args.date,
+        word=parsed_args.word,
+        db_path=parsed_args.db_path,
     )
 
 

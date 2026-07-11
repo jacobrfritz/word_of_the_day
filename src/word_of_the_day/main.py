@@ -26,10 +26,13 @@ def run(
     embedding_k: int = 5,
     seed_csv_path: str | None = None,
     cache_npz_path: str | None = None,
+    mode: str = "list",
+    date: str | None = None,
+    word: str | None = None,
+    db_path: str | None = None,
 ) -> None:
     """Core application logic demonstrating robust logging, word frequency
-
-    analysis, and dictionary validation.
+    analysis, and dictionary validation, with support for historical tracking.
     """
     load_dotenv()
 
@@ -89,6 +92,72 @@ def run(
     )
 
     logger.info("Starting the Word of the Day analysis pipeline.")
+
+    # Initialize storage and check parameters
+    from .storage import Storage
+
+    storage = Storage(db_path=db_path)
+
+    if date is None:
+        from datetime import datetime
+
+        date = datetime.now().strftime("%Y-%m-%d")
+
+    try:
+        from datetime import datetime
+
+        datetime.strptime(date, "%Y-%m-%d")
+    except ValueError:
+        logger.error(f"Error: Invalid date format '{date}'. Expected YYYY-MM-DD.")
+        return
+
+    if mode == "api":
+        import uvicorn
+
+        from .api import app
+
+        host = os.environ.get("API_HOST", "127.0.0.1")
+        port = int(os.environ.get("API_PORT", "8000"))
+        logger.info(f"Starting API server on {host}:{port}...")
+        uvicorn.run(app, host=host, port=port)
+        return
+
+    if mode == "set":
+        if not word:
+            logger.error("Error: --word must be provided when --mode is 'set'.")
+            return
+
+        from wordfreq import zipf_frequency
+
+        from .dictionary import DictionaryClient
+
+        logger.info(f"Manually setting Word of the Day for {date}: '{word}'")
+        with DictionaryClient() as dict_client:
+            is_valid, definition = dict_client.get_word_definition(word)
+            if not is_valid:
+                logger.warning(f"Word validation warning: {definition}")
+                # Save anyway but warn
+
+            reusable = storage.is_word_reusable(word, date, days_threshold=365)
+            if not reusable:
+                logger.warning(
+                    f"Warning: Word '{word}' has been selected recently "
+                    f"(within 365 days) relative to {date}!"
+                )
+
+            score_val = zipf_frequency(word, "en")
+            storage.save_word_of_the_day(
+                date=date,
+                word=word,
+                definition=definition,
+                source="Manual Set",
+                score=score_val,
+                extra_info={"manual": True},
+            )
+            logger.info(
+                f"Successfully saved '{word.upper()}' as Word of the Day for {date}."
+            )
+            return
 
     # 1. Fetch text from selected sources
     from .connectors import Connector
@@ -213,7 +282,7 @@ def run(
         return
 
     # 2. Extract, score, and validate candidates
-    from .pipeline import WordOfTheDayPipeline
+    from .pipeline import WordCandidate, WordOfTheDayPipeline
     from .scorers import EmbeddingScorer, WordScorer, ZipfScorer
 
     scorer: WordScorer = ZipfScorer()
@@ -240,55 +309,193 @@ def run(
 
     logger.info("Initializing WordOfTheDayPipeline...")
 
-    total_validated = 0
-    print("\n" + "=" * 60)
-    print("      WORD OF THE DAY CANDIDATES BY SOURCE")
-    print("=" * 60)
-
     with WordOfTheDayPipeline(scorer=scorer) as pipeline:
+        all_candidates = []
         for source_name, text in source_texts.items():
             if not text.strip():
                 continue
+
+            # Fetch candidates from the pipeline.
+            # If in 'list' mode, we match CLI display limit.
+            # Otherwise (selection modes), fetch more candidates to filter
+            # by the 365-day reuse rule.
+            fetch_limit = limit if mode == "list" else max(limit * 3, 15)
 
             candidates = pipeline.find_candidates(
                 text,
                 min_score=min_score,
                 max_score=max_score,
-                limit=limit,
+                limit=fetch_limit,
                 shuffle=shuffle,
             )
-
-            print(f"\n--- Source: {source_name} (Top {len(candidates)}) ---")
-            if not candidates:
-                print("   No candidate words found.")
-                continue
-
             for candidate in candidates:
-                word = candidate.word
-                zipf = candidate.zipf_score
-                info = candidate.definition
-                score_val = candidate.score
+                all_candidates.append((source_name, candidate))
 
-                score_str = f"Zipf Score: {zipf:.2f}"
-                if use_embeddings and score_val is not None:
-                    if isinstance(score_val, float | int):
-                        score_str = (
-                            f"Embedding Sim: {score_val:.4f}, Zipf Score: {zipf:.2f}"
+        # Mode list: Keep the original source-by-source output but add used flags
+        if mode == "list":
+            print("\n" + "=" * 60)
+            print("      WORD OF THE DAY CANDIDATES BY SOURCE")
+            print("=" * 60)
+
+            by_source: dict[str, list[WordCandidate]] = {}
+            for src, candidate in all_candidates:
+                by_source.setdefault(src, []).append(candidate)
+
+            total_validated = 0
+            for source_name, candidates in by_source.items():
+                print(f"\n--- Source: {source_name} (Top {len(candidates)}) ---")
+                if not candidates:
+                    print("   No candidate words found.")
+                    continue
+
+                for candidate in candidates:
+                    word = candidate.word
+                    zipf = candidate.zipf_score
+                    info = candidate.definition
+                    cand_score = candidate.score
+
+                    # Check 365-day reusability
+                    is_reusable = storage.is_word_reusable(
+                        word, date, days_threshold=365
+                    )
+                    reuse_indicator = (
+                        "" if is_reusable else " ❌ [Used within 365 days]"
+                    )
+
+                    score_str = f"Zipf Score: {zipf:.2f}"
+                    if use_embeddings and cand_score is not None:
+                        if isinstance(cand_score, float | int):
+                            score_str = (
+                                f"Embedding Sim: {cand_score:.4f}, "
+                                f"Zipf Score: {zipf:.2f}"
+                            )
+                        else:
+                            score_str = (
+                                f"Embedding Sim: {cand_score}, "
+                                f"Zipf Score: {zipf:.2f}"
+                            )
+
+                    try:
+                        print(
+                            f"👉 \033[1m{word.upper()}\033[0m "
+                            f"({score_str}){reuse_indicator}"
                         )
-                    else:
-                        score_str = (
-                            f"Embedding Sim: {score_val}, Zipf Score: {zipf:.2f}"
+                    except UnicodeEncodeError:
+                        print(
+                            f"-> \033[1m{word.upper()}\033[0m "
+                            f"({score_str}){reuse_indicator}"
                         )
+                    print(f"   Definition: {info}")
+                    total_validated += 1
 
-                try:
-                    print(f"👉 \033[1m{word.upper()}\033[0m ({score_str})")
-                except UnicodeEncodeError:
-                    print(f"-> \033[1m{word.upper()}\033[0m ({score_str})")
-                print(f"   Definition: {info}")
-                total_validated += 1
+            print("\n" + "=" * 60)
+            logger.info(
+                "Pipeline finished. Successfully validated and defined "
+                f"{total_validated} words."
+            )
+            return
 
-    print("\n" + "=" * 60)
-    logger.info(
-        "Pipeline finished. Successfully validated and defined "
-        f"{total_validated} words."
-    )
+        # Deduplicate candidates across different sources
+        seen_words = set()
+        dedup_candidates = []
+        for src, candidate in all_candidates:
+            word_lower = candidate.word.lower()
+            if word_lower not in seen_words:
+                seen_words.add(word_lower)
+                dedup_candidates.append((src, candidate))
+
+        # Sort the deduplicated candidates based on scorer preference
+        # ZipfScorer: lower Zipf score is better
+        # EmbeddingScorer: higher similarity is better
+        reverse = scorer.higher_is_better
+        dedup_candidates.sort(
+            key=lambda item: (
+                item[1].score if item[1].score is not None else item[1].zipf_score
+            ),
+            reverse=reverse,
+        )
+
+        # Filter out candidates that violate the 365-day reuse rule
+        reusable_candidates = []
+        for src, candidate in dedup_candidates:
+            if storage.is_word_reusable(candidate.word, date, days_threshold=365):
+                reusable_candidates.append((src, candidate))
+
+        if not reusable_candidates:
+            logger.error(
+                "No reusable candidate words found that satisfy the 365-day rule."
+            )
+            return
+
+        if mode == "auto":
+            # Automatically pick the highest ranked candidate
+            src, chosen = reusable_candidates[0]
+            logger.info(
+                f"Auto-selected Word of the Day for {date}: '{chosen.word.upper()}'"
+            )
+            storage.save_word_of_the_day(
+                date=date,
+                word=chosen.word,
+                definition=chosen.definition,
+                source=src,
+                score=chosen.score if chosen.score is not None else chosen.zipf_score,
+                extra_info={"zipf_score": chosen.zipf_score, "auto": True},
+            )
+            print(f"\n🎉 Selected Word of the Day for {date}: {chosen.word.upper()}")
+            print(f"Definition: {chosen.definition}")
+            print(f"Source: {src}")
+            return
+
+        if mode == "interactive":
+            print("\n" + "=" * 60)
+            print(f"      SELECT WORD OF THE DAY FOR {date}")
+            print("=" * 60)
+
+            display_limit = min(len(reusable_candidates), limit * 3)
+            for idx, (src, candidate) in enumerate(
+                reusable_candidates[:display_limit], 1
+            ):
+                score_str = f"Zipf Score: {candidate.zipf_score:.2f}"
+                if candidate.score is not None:
+                    score_str = (
+                        f"Score: {candidate.score:.4f}, "
+                        f"Zipf: {candidate.zipf_score:.2f}"
+                    )
+                print(
+                    f"{idx}. \033[1m{candidate.word.upper()}\033[0m "
+                    f"({score_str}) from {src}"
+                )
+                print(f"   Definition: {candidate.definition}")
+
+            print("\nEnter the number of the word you want to select (or 'q' to quit):")
+            try:
+                choice = input("> ").strip()
+                if choice.lower() == "q":
+                    logger.info("Selection cancelled.")
+                    return
+                idx_choice = int(choice) - 1
+                if 0 <= idx_choice < display_limit:
+                    src, chosen = reusable_candidates[idx_choice]
+                    storage.save_word_of_the_day(
+                        date=date,
+                        word=chosen.word,
+                        definition=chosen.definition,
+                        source=src,
+                        score=(
+                            chosen.score
+                            if chosen.score is not None
+                            else chosen.zipf_score
+                        ),
+                        extra_info={
+                            "zipf_score": chosen.zipf_score,
+                            "interactive": True,
+                        },
+                    )
+                    print(
+                        f"\n🎉 Saved Word of the Day for {date}: {chosen.word.upper()}"
+                    )
+                else:
+                    print("Invalid choice. Selection cancelled.")
+            except (ValueError, IndexError, EOFError):
+                print("\nInvalid input or stream closed. Selection cancelled.")
+            return

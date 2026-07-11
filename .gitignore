@@ -218,4 +218,4 @@ logs/
 # Data caches and generated files
 *.npz
 *.csv
-
+*.db
