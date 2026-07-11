@@ -1,0 +1,16 @@
+services:
+  word-of-the-day:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./word_of_the_day.db:/app/word_of_the_day.db
+      - ./logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+    restart: unless-stopped

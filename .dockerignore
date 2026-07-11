@@ -1,0 +1,12 @@
+.git
+.venv
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.env
+word_of_the_day.db
+logs/
