@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     # User Agent details
     app_name: str = Field(default="WordOfTheDayApp", validation_alias="APP_NAME")
     app_version: str = Field(default="1.0.0", validation_alias="APP_VERSION")
-    contact_email: str = Field(default="fritz@example.com", validation_alias="CONTACT_EMAIL")
+    contact_email: str = Field(default="", validation_alias="CONTACT_EMAIL")
 
     wikipedia_app_name: str | None = Field(default=None, validation_alias="WIKIPEDIA_APP_NAME")
     wikipedia_contact_email: str | None = Field(default=None, validation_alias="WIKIPEDIA_CONTACT_EMAIL")

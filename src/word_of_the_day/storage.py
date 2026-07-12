@@ -101,6 +101,18 @@ class Storage:
                 "CREATE INDEX IF NOT EXISTS idx_seed_words_word ON seed_words(word)"
             )
 
+            # Create dictionary_cache table to avoid redundant API calls
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS dictionary_cache (
+                    word TEXT PRIMARY KEY,
+                    is_valid INTEGER NOT NULL,
+                    definition TEXT,
+                    origin TEXT
+                )
+                """
+            )
+
             # One-time migration: delete old bootstrapped words from wotd_history
             cursor = conn.cursor()
             cursor.execute("DELETE FROM wotd_history WHERE source = 'Bootstrap CSV'")
@@ -172,6 +184,61 @@ class Storage:
                 )
             except sqlite3.Error as e:
                 logger.error(f"Error inserting bootstrap records: {e}")
+
+    def get_cached_definition(
+        self, word: str
+    ) -> tuple[bool, str, str | None] | None:
+        """
+        Returns the cached dictionary result for a word, or None if not cached.
+
+        Returns:
+            A tuple of (is_valid, definition, origin) if the word is in the cache,
+            or None if no cache entry exists.
+        """
+        cleaned_word = word.strip().lower()
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT is_valid, definition, origin
+                FROM dictionary_cache
+                WHERE word = ?
+                """,
+                (cleaned_word,),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                return None
+            is_valid = bool(row[0])
+            definition = row[1] or ""
+            origin = row[2]
+            return is_valid, definition, origin
+
+    def cache_definition(
+        self,
+        word: str,
+        is_valid: bool,
+        definition: str,
+        origin: str | None,
+    ) -> None:
+        """
+        Persists the result of a dictionary API lookup so future pipeline
+        runs can skip the network call for this word.
+        """
+        cleaned_word = word.strip().lower()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO dictionary_cache (word, is_valid, definition, origin)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(word) DO UPDATE SET
+                    is_valid   = excluded.is_valid,
+                    definition = excluded.definition,
+                    origin     = excluded.origin
+                """,
+                (cleaned_word, int(is_valid), definition, origin),
+            )
+            conn.commit()
 
     def is_word_reusable(
         self, word: str, reference_date: str, days_threshold: int = 365

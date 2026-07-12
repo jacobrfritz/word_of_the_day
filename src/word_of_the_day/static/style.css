@@ -718,27 +718,24 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 }
 
 .footer-divider {
-  display: flex;
-  align-items: center;
+  border-top: 1px solid var(--border-color);
   text-align: center;
+  padding-top: 2rem;
   margin-bottom: 2.5rem;
 }
 
 .footer-divider::before,
 .footer-divider::after {
-  content: '';
-  flex: 1;
-  border-bottom: 1px solid var(--border-color);
+  display: none;
 }
 
 .footer-divider span {
-  padding: 0 1.25rem;
   font-family: 'Outfit', sans-serif;
-  font-size: 0.75rem;
+  font-size: 1.05rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: -0.01em;
   color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .footer-divider span span {
@@ -886,3 +883,266 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
     gap: 1rem;
   }
 }
+
+/* ==========================================================================
+   Custom Calendar Widget
+   ========================================================================== */
+
+.calendar-widget {
+  width: 100%;
+  max-width: 420px;
+  padding: 0;
+  user-select: none;
+  overflow: hidden; /* clip the sliding body */
+}
+
+/* ── Collapse trigger (always-visible header row) ── */
+.cal-collapse-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 1.1rem 1.5rem;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  gap: 0.75rem;
+  border-radius: 24px; /* matches glass-card */
+  transition: background 0.2s ease;
+}
+
+.cal-collapse-trigger:hover {
+  background: rgba(var(--accent-rgb), 0.06);
+}
+
+.cal-trigger-left {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.cal-trigger-icon {
+  color: var(--accent);
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.cal-trigger-label {
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.01em;
+}
+
+.cal-trigger-right {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.cal-trigger-date {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.cal-trigger-chevron {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s ease;
+}
+
+/* When open, rotate chevron */
+.calendar-widget.is-open .cal-trigger-chevron {
+  transform: rotate(180deg);
+  color: var(--accent);
+}
+
+/* ── Collapsible body ── */
+.cal-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.calendar-widget.is-open .cal-body {
+  grid-template-rows: 1fr;
+}
+
+.cal-body-inner {
+  overflow: hidden;
+  padding: 0 1.5rem 1.5rem;
+}
+
+/* Separator line between trigger and body */
+.calendar-widget.is-open .cal-collapse-trigger {
+  border-bottom: 1px solid var(--border-color);
+  border-radius: 24px 24px 0 0;
+}
+
+
+
+/* Header: prev / month-label / next */
+.calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.cal-month-label {
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+}
+
+.cal-nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: var(--transition-smooth);
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.cal-nav-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-muted);
+}
+
+.cal-nav-btn:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+/* Day-of-week header row */
+.calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  margin-bottom: 0.4rem;
+  gap: 2px;
+}
+
+.calendar-weekdays span {
+  text-align: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  padding: 0.25rem 0;
+  letter-spacing: 0.05em;
+}
+
+/* Day grid */
+.calendar-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+
+/* Individual day cell */
+.cal-day {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: default;
+  padding: 0;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+  outline: none;
+  gap: 2px;
+}
+
+.cal-day-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  line-height: 1;
+}
+
+.cal-day--empty {
+  pointer-events: none;
+}
+
+/* Days WITH data — clickable & highlighted */
+.cal-day--has-data {
+  cursor: pointer;
+}
+
+.cal-day--has-data .cal-day-num {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.cal-day--has-data:hover {
+  background: var(--accent-muted);
+  border-color: rgba(var(--accent-rgb), 0.3);
+  transform: scale(1.08);
+}
+
+/* Accent dot shown on data days */
+.cal-day-dot {
+  display: block;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.cal-day--has-data:hover .cal-day-dot {
+  opacity: 1;
+}
+
+/* Today ring */
+.cal-day--today {
+  border-color: rgba(var(--accent-rgb), 0.35);
+}
+
+.cal-day--today .cal-day-num {
+  color: var(--accent);
+}
+
+/* Active / selected day */
+.cal-day--active {
+  background: rgba(var(--accent-rgb), 0.15) !important;
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 12px 0 rgba(var(--accent-rgb), 0.2);
+}
+
+.cal-day--active .cal-day-num {
+  color: var(--accent) !important;
+  font-weight: 700;
+}
+
+.cal-day--active .cal-day-dot {
+  opacity: 1;
+}
+
+/* Disabled days (no data) */
+.cal-day--disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+

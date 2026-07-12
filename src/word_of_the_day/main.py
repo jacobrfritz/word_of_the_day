@@ -314,28 +314,56 @@ def run(
     if mode != "list":
         is_reusable_cb = lambda w: storage.is_word_reusable(w, date, days_threshold=365)
 
-    with WordOfTheDayPipeline(scorer=scorer) as pipeline:
-        all_candidates = []
+    with WordOfTheDayPipeline(scorer=scorer, storage=storage) as pipeline:
+        # Phase 1: Score all sources (no dictionary API calls).
+        # Merge scored word lists across sources, tagging each word with
+        # its origin source. Words are pre-sorted best-first per source.
+        all_scored: list[tuple[str, str, float]] = []  # (source_name, word, score)
         for source_name, text in source_texts.items():
             if not text.strip():
                 continue
-
-            # Fetch candidates from the pipeline.
-            # If in 'list' mode, we match CLI display limit.
-            # Otherwise (selection modes), fetch more candidates to filter
-            # by the 365-day reuse rule.
-            fetch_limit = limit if mode == "list" else max(limit * 3, 15)
-
-            candidates = pipeline.find_candidates(
+            scored = pipeline.score_candidates(
                 text,
                 min_score=min_score,
                 max_score=max_score,
-                limit=fetch_limit,
                 shuffle=shuffle,
                 is_reusable_cb=is_reusable_cb,
             )
-            for candidate in candidates:
-                all_candidates.append((source_name, candidate))
+            for word, score in scored:
+                all_scored.append((source_name, word, score))
+
+        # Deduplicate words across sources (keep highest-scoring occurrence).
+        seen: dict[str, tuple[str, float]] = {}
+        for source_name, word, score in all_scored:
+            word_lower = word.lower()
+            if word_lower not in seen:
+                seen[word_lower] = (source_name, score)
+            else:
+                # Keep the entry whose score is "better" per scorer preference
+                _, existing_score = seen[word_lower]
+                if scorer.higher_is_better and score > existing_score:
+                    seen[word_lower] = (source_name, score)
+                elif not scorer.higher_is_better and score < existing_score:
+                    seen[word_lower] = (source_name, score)
+
+        # Re-sort merged candidates globally, best first.
+        merged_scored: list[tuple[str, str, float]] = [
+            (src, w, s) for w, (src, s) in seen.items()
+        ]
+        merged_scored.sort(key=lambda item: item[2], reverse=scorer.higher_is_better)
+
+        # Phase 2: Lazy validation — only call the dictionary API for as many
+        # words as we actually need.  For 'auto' mode that's exactly 1.
+        # For 'interactive'/'list' it's `limit`.
+        validate_limit = 1 if mode == "auto" else limit
+        scored_pairs = [(w, s) for _, w, s in merged_scored]
+        validated = pipeline.validate_candidates(scored_pairs, limit=validate_limit)
+
+        # Re-associate validated words with their source names.
+        word_to_source: dict[str, str] = {w: src for src, w, _ in merged_scored}
+        all_candidates = [
+            (word_to_source.get(c.word, "Unknown"), c) for c in validated
+        ]
 
         # Mode list: Keep the original source-by-source output but add used flags
         if mode == "list":
@@ -400,33 +428,9 @@ def run(
             )
             return
 
-        # Deduplicate candidates across different sources
-        seen_words = set()
-        dedup_candidates = []
-        for src, candidate in all_candidates:
-            word_lower = candidate.word.lower()
-            if word_lower not in seen_words:
-                seen_words.add(word_lower)
-                dedup_candidates.append((src, candidate))
-
-        # Sort the deduplicated candidates based on scorer preference
-        # ZipfScorer: lower Zipf score is better
-        # EmbeddingScorer: higher similarity is better
-        reverse = scorer.higher_is_better
-        dedup_candidates.sort(
-            key=lambda item: (
-                item[1].score if item[1].score is not None else item[1].zipf_score
-            ),
-            reverse=reverse,
-        )
-
-        # Filter out candidates that violate the 365-day reuse rule
-        reusable_candidates = []
-        for src, candidate in dedup_candidates:
-            if storage.is_word_reusable(candidate.word, date, days_threshold=365):
-                reusable_candidates.append((src, candidate))
-
-        if not reusable_candidates:
+        # all_candidates is already deduplicated, globally sorted best-first,
+        # and reusability-filtered (via is_reusable_cb in Phase 1).
+        if not all_candidates:
             logger.error(
                 "No reusable candidate words found that satisfy the 365-day rule."
             )
@@ -434,7 +438,7 @@ def run(
 
         if mode == "auto":
             # Automatically pick the highest ranked candidate
-            src, chosen = reusable_candidates[0]
+            src, chosen = all_candidates[0]
             logger.info(
                 f"Auto-selected Word of the Day for {date}: '{chosen.word.upper()}'"
             )
@@ -457,10 +461,8 @@ def run(
             print(f"      SELECT WORD OF THE DAY FOR {date}")
             print("=" * 60)
 
-            display_limit = min(len(reusable_candidates), limit * 3)
-            for idx, (src, candidate) in enumerate(
-                reusable_candidates[:display_limit], 1
-            ):
+            display_limit = len(all_candidates)
+            for idx, (src, candidate) in enumerate(all_candidates, 1):
                 score_str = f"Zipf Score: {candidate.zipf_score:.2f}"
                 if candidate.score is not None:
                     score_str = (
@@ -481,7 +483,7 @@ def run(
                     return
                 idx_choice = int(choice) - 1
                 if 0 <= idx_choice < display_limit:
-                    src, chosen = reusable_candidates[idx_choice]
+                    src, chosen = all_candidates[idx_choice]
                     storage.save_word_of_the_day(
                         date=date,
                         word=chosen.word,
@@ -506,3 +508,4 @@ def run(
             except (ValueError, IndexError, EOFError):
                 print("\nInvalid input or stream closed. Selection cancelled.")
             return
+

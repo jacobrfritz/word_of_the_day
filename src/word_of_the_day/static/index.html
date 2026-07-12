@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;0,800;1,500;1,600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   
-  <link rel="stylesheet" href="/static/style.css?v=4">
+  <link rel="stylesheet" href="/static/style.css?v=6">
 </head>
 <body>
   <!-- Ambient background lighting -->
@@ -93,22 +93,52 @@
       </div>
     </section>
 
-    <!-- Sleek Historical Date Lookup -->
+    <!-- Custom Calendar Date Picker (collapsible) -->
     <section class="lookup-section">
-      <div class="lookup-pill">
-        <div class="input-icon-wrapper">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-            <line x1="16" y1="2" x2="16" y2="6"></line>
-            <line x1="8" y1="2" x2="8" y2="6"></line>
-            <line x1="3" y1="10" x2="21" y2="10"></line>
-          </svg>
+      <div class="calendar-widget glass-card" id="calendarWidget">
+
+        <!-- Collapsed trigger row — always visible -->
+        <button class="cal-collapse-trigger" id="calToggle" aria-expanded="false" aria-controls="calendarBody">
+          <div class="cal-trigger-left">
+            <svg class="cal-trigger-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            <span class="cal-trigger-label">Browse Archive</span>
+          </div>
+          <div class="cal-trigger-right">
+            <span class="cal-trigger-date" id="calTriggerDate"></span>
+            <svg class="cal-trigger-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </div>
+        </button>
+
+        <!-- Collapsible body -->
+        <div class="cal-body" id="calendarBody">
+          <div class="cal-body-inner">
+            <div class="calendar-header">
+              <button class="cal-nav-btn" id="calPrev" aria-label="Previous month">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+              </button>
+              <span class="cal-month-label" id="calMonthLabel"></span>
+              <button class="cal-nav-btn" id="calNext" aria-label="Next month">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              </button>
+            </div>
+            <div class="calendar-weekdays">
+              <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+            </div>
+            <div class="calendar-days" id="calendarDays"></div>
+          </div>
         </div>
-        <input type="date" id="lookupDate" aria-label="Select date to explore">
-        <button class="lookup-btn" id="lookupBtn">Explore</button>
+
       </div>
       <div class="error-msg" id="errorContainer">No Word of the Day chosen for this date.</div>
     </section>
+
 
     <!-- Minimal Recent Selections History Feed -->
     <section class="history-section">
@@ -125,7 +155,7 @@
   <footer class="footer">
     <div class="footer-container">
       <div class="footer-divider">
-        <span>How word<span></span> Works</span>
+        <span>How word<span>.</span> Works</span>
       </div>
 
       <div class="pipeline-section">
@@ -227,6 +257,6 @@
     </div>
   </footer>
 
-  <script src="/static/index.js?v=4" defer></script>
+  <script src="/static/index.js?v=6" defer></script>
 </body>
 </html>

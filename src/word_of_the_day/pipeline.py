@@ -2,13 +2,16 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
-from typing import Callable, Self
+from typing import TYPE_CHECKING, Callable, Self
 
 from wordfreq import zipf_frequency
 
 from .dictionary import DictionaryClient
 from .logger import get_logger
 from .scorers import WordScorer, ZipfScorer
+
+if TYPE_CHECKING:
+    from .storage import Storage
 
 logger = get_logger(__name__)
 
@@ -38,6 +41,7 @@ class WordOfTheDayPipeline:
         stop_words: set[str] | list[str] | Path | str | None = None,
         dictionary_client: DictionaryClient | None = None,
         scorer: WordScorer | None = None,
+        storage: "Storage | None" = None,
     ) -> None:
         """
         Initialize the pipeline.
@@ -50,11 +54,15 @@ class WordOfTheDayPipeline:
                                provided, a default DictionaryClient will be created.
             scorer: An optional WordScorer instance to score candidates.
                     Defaults to ZipfScorer.
+            storage: An optional Storage instance used to cache dictionary API
+                     results. When provided, previously looked-up words are served
+                     from the DB, skipping the network call entirely.
         """
         self.stop_words = self._load_stop_words(stop_words)
         self._external_client = dictionary_client is not None
         self.dictionary_client = dictionary_client or DictionaryClient()
         self.scorer = scorer or ZipfScorer()
+        self.storage = storage
 
     def _load_stop_words(
         self, stop_words: set[str] | list[str] | Path | str | None
@@ -145,18 +153,43 @@ class WordOfTheDayPipeline:
     def validate_candidates(
         self,
         scored_candidates: list[tuple[str, float]],
-        limit: int = 15,
+        limit: int = 1,
     ) -> list[WordCandidate]:
         """
-        Validates candidates using the dictionary client, continuing until
-        the limit of valid words is reached.
+        Lazily validates scored candidates using the dictionary client.
+
+        Walks through `scored_candidates` in order (highest score first) and
+        calls the dictionary API only when needed — stopping as soon as `limit`
+        valid words have been found.  Invalid words are skipped and never counted
+        toward the limit.
+
+        Results are cached in storage (when provided) so that repeat runs
+        skip the network call for words already looked up.
+
+        Args:
+            scored_candidates: Words pre-sorted by score, best first.
+            limit: Maximum number of *valid* words to return. Defaults to 1
+                   so callers that only need one word pay for at most one API
+                   call (or one cache hit).
         """
         validated_candidates: list[WordCandidate] = []
 
         for word, score in scored_candidates:
             if len(validated_candidates) >= limit:
                 break
-            is_valid, info, origin = self.dictionary_client.get_word_definition(word)
+
+            # --- Cache lookup ---
+            if self.storage is not None:
+                cached = self.storage.get_cached_definition(word)
+                if cached is not None:
+                    is_valid, info, origin = cached
+                    logger.debug(f"Cache hit for '{word}' (valid={is_valid})")
+                else:
+                    is_valid, info, origin = self.dictionary_client.get_word_definition(word)
+                    self.storage.cache_definition(word, is_valid, info, origin)
+            else:
+                is_valid, info, origin = self.dictionary_client.get_word_definition(word)
+
             if is_valid:
                 # If using standard ZipfScorer, the score *is* the zipf score.
                 # Otherwise (e.g. EmbeddingScorer), we fetch the real Zipf score
@@ -182,31 +215,76 @@ class WordOfTheDayPipeline:
 
         return validated_candidates
 
+    def score_candidates(
+        self,
+        text: str,
+        min_score: float = 2.3,
+        max_score: float = 4.0,
+        shuffle: bool = False,
+        is_reusable_cb: Callable[[str], bool] | None = None,
+    ) -> list[tuple[str, float]]:
+        """
+        Phase 1 of the pipeline: extract, filter, and score words from the corpus.
+
+        No dictionary API calls are made here. Returns all scored candidates
+        sorted best-first so the caller can drive validation lazily.
+
+        Args:
+            text: Raw text corpus to mine for candidate words.
+            min_score: Minimum Zipf frequency (exclusive).
+            max_score: Maximum Zipf frequency (inclusive).
+            shuffle: If True, randomise order after scoring (useful for
+                     exploration; disables best-first ordering).
+            is_reusable_cb: Optional callback that returns True if a word is
+                            eligible for selection (e.g. not used in 365 days).
+                            Words that return False are excluded before scoring.
+        """
+        unique_words = self.clean_text(text)
+        if is_reusable_cb:
+            unique_words = {w for w in unique_words if is_reusable_cb(w)}
+        scored = self.score_and_filter(unique_words, min_score=min_score, max_score=max_score)
+        if shuffle:
+            import random
+            random.shuffle(scored)
+        return scored
+
+
     def find_candidates(
         self,
         text: str,
         min_score: float = 2.3,
         max_score: float = 4.0,
-        limit: int = 15,
+        limit: int = 1,
         shuffle: bool = False,
         is_reusable_cb: Callable[[str], bool] | None = None,
     ) -> list[WordCandidate]:
         """
-        Run the complete pipeline on the provided text corpus.
-        """
-        unique_words = self.clean_text(text)
-        if is_reusable_cb:
-            unique_words = {w for w in unique_words if is_reusable_cb(w)}
-        scored_candidates = self.score_and_filter(
-            unique_words, min_score=min_score, max_score=max_score
-        )
-        if shuffle:
-            import random
+        Convenience wrapper: score the corpus then lazily validate.
 
-            random.shuffle(scored_candidates)
-        return self.validate_candidates(scored_candidates, limit=limit)
+        Calls `score_candidates` (no API) then `validate_candidates` (API on
+        demand), stopping as soon as `limit` valid words are found.
+
+        Args:
+            text: Raw text corpus.
+            min_score: Minimum Zipf frequency (exclusive).
+            max_score: Maximum Zipf frequency (inclusive).
+            limit: Maximum number of valid words to return. Defaults to 1 —
+                   callers that only need one word never pay for more than one
+                   API call.
+            shuffle: Randomise candidate order before validation.
+            is_reusable_cb: Optional reusability gate applied before scoring.
+        """
+        scored = self.score_candidates(
+            text,
+            min_score=min_score,
+            max_score=max_score,
+            shuffle=shuffle,
+            is_reusable_cb=is_reusable_cb,
+        )
+        return self.validate_candidates(scored, limit=limit)
 
     def close(self) -> None:
+
         """Close the underlying dictionary client session.
 
         Only closes if the client was created internally.

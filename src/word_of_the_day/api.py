@@ -141,6 +141,16 @@ def get_word(
     return record
 
 
+@app.get("/api/dates", response_model=list[str])
+def get_dates() -> list[str]:
+    """
+    Returns a sorted list of all dates (YYYY-MM-DD) that have a Word of the Day record.
+    Used by the frontend calendar to highlight days with data.
+    """
+    records = storage.get_history(limit=None)
+    return sorted({r["date"] for r in records})
+
+
 @app.get("/api/history", response_model=list[WordOfTheDayRecord])
 def get_history(
     limit: int | None = Query(
