@@ -210,7 +210,7 @@
 
             <!-- Node 4: Rank -->
             <g class="pipeline-node" transform="translate(428, 25)">
-              <title>Ranking: SentenceTransformer semantic model scores candidates against a refined seed list.</title>
+              <title>Ranking: Candidates are embedded using SentenceTransformer and scored via cosine similarity against the day's active seed cluster centroid.</title>
               <rect width="110" height="70" rx="16" ry="16" fill="var(--bg-card)" stroke="var(--border-color)" stroke-width="1.5" />
               <svg x="43" y="10" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="4" y="4" width="16" height="16" rx="2" ry="2" />
@@ -225,7 +225,7 @@
                 <line x1="1" y1="15" x2="4" y2="15" />
               </svg>
               <text x="55" y="49" text-anchor="middle" class="node-label">Rank</text>
-              <text x="55" y="59" text-anchor="middle" class="node-sublabel">Embeddings</text>
+              <text x="55" y="59" text-anchor="middle" class="node-sublabel">Cluster Centroid</text>
             </g>
 
             <!-- Node 5: Deliver -->
@@ -250,7 +250,7 @@
           <p>To prevent repeat performances, these raw texts are immediately run through a <strong>365-Day Reusability Check</strong>, instantly filtering out any word that was selected as a word of the day in the past year.</p>
           <p>Next, candidates face the <strong>Zipf Frequency Filter</strong>. This acts as a 'goldilocks' check: weeding out overly common conversational filler (looking at you, <em>the</em>), and discarding obscure OCR noise and scanner typos.</p>
           <p>The survivors are validated via the <strong>Free Dictionary API</strong> to verify they are real English words with actual definitions and etymologies. No made-up jargon allowed.</p>
-          <p>Finally, the remaining candidates enter the <strong>Semantic Ranking Pipeline</strong>. A SentenceTransformer model encodes candidate words and compares their embeddings against a curated seed database. Words are scored by the average cosine similarity of their <em>K</em>-nearest neighbors, sorting them by how well they match a sophisticated, literary vibe.</p>
+          <p>Finally, the remaining candidates enter the <strong>Semantic Ranking Pipeline</strong>. A SentenceTransformer model encodes candidate words. To ensure variety and thematic consistency, our curated seed database is grouped into distinct sub-vocabularies using K-Means clustering (with the optimal number of clusters dynamically determined via the Elbow Method). The pipeline rotates the active target cluster centroid daily, scoring candidates by their cosine similarity to that cluster centroid to sort them by how well they match the day's selected literary and stylistic theme.</p>
           <p>The highest-ranking candidate is crowned the Word of the Day, saved to our SQLite database, and served via FastAPI to your screen.</p>
         </div>
       </div>

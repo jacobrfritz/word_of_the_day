@@ -6,15 +6,17 @@ A comprehensive daily vocabulary generator, analytics pipeline, and portal dashb
 
 ## Features
 
-- **Multi-Source Corpus Generation**: Fetches raw texts from Wikipedia, Project Gutenberg (by ID or random), the New York Times API, Quotable API, PoetryDB, and Substack publication feeds.
-- **Zipf Frequency Filtering**: Uses `wordfreq` to filter out words that are too common (e.g. conversational words) or too obscure (e.g. OCR noise, rare technical jargon).
-- **Semantic Embedding Similarity**: Employs `sentence-transformers` (`all-MiniLM-L6-v2` by default) to compare candidate embeddings against a seed database of past selections, maintaining a cohesive, sophisticated vocabulary flavor.
+- **Multi-Source Corpus Generation**: Fetches raw texts from Wikipedia, Project Gutenberg (by ID or random), the New York Times API, Quotable API, PoetryDB, and Substack publication feeds in parallel.
+- **Zipf Frequency Filtering**: Uses `wordfreq` to filter out words that are too common (e.g. conversational words) or too obscure (e.g. OCR noise, rare technical jargon), optimized with SQLite-backed caching of Merriam-Webster API responses.
+- **Dynamic Semantic Clustering & Rotation**: Seed embeddings are clustered via K-Means (optimal cluster count $K$ determined on-the-fly via the Elbow Method). The pipeline rotates to the next cluster daily, scoring candidates against the active cluster centroid to ensure semantic variety.
 - **FastAPI Backend Server**:
   - `GET /`: Serves the glassmorphic analytics dashboard.
-  - `GET /api/word?date=YYYY-MM-DD`: Returns the selection for a date. Features a self-healing client that dynamically queries the Free Dictionary API for missing definitions or word origins on-demand.
+  - `GET /api/word?date=YYYY-MM-DD`: Returns the selection for a date. Features a self-healing client that dynamically queries the Merriam-Webster API for missing definitions or word origins on-demand and caches them locally.
+  - `GET /api/dates`: Returns a sorted list of dates with selected words for calendar integration.
   - `GET /api/history?limit=N`: Fetches recent historical selections.
-- **Premium Glassmorphic UI**: Responsive dashboard with active word details, historical selection lookup, and a recent selections sidebar.
-- **Automated Background Scheduler**: A lightweight background daemon thread scheduler that triggers daily candidate selection at midnight America/Chicago (no OS `cron` or root permissions required).
+  - `GET /healthz`: Liveness/readiness database probe for container health checks.
+- **Premium Glassmorphic UI**: Responsive dashboard with active word card (incorporating text-to-speech pronunciation, copy-to-clipboard, dynamic origin/etymology display) and a slide-out, fully-interactive calendar showing dates with data.
+- **Robust Background Scheduler**: A lightweight background daemon thread scheduler that runs daily candidate selection in a separate subprocess, avoiding circular dependency risks and memory leaks.
 - **Hardened Web Security**: FastAPI backend configured with CORS, Gzip compression, and strict security headers (Content-Security-Policy, HSTS, X-Content-Type-Options, X-Frame-Options, Referrer-Policy).
 - **Container Readiness**: Built-in container healthcheck targeting a `/healthz` liveness/readiness database probe.
 - **Bootstrap Utilities**: Interactive script to fetch new words from podcast RSS feeds to update the baseline seed words.
@@ -32,32 +34,32 @@ graph TD
     C -- Yes --> D[365-day Reuse Check<br>Filter out recently selected words early]
     C -- No --> E[Zipf Frequency Filter<br>Filter for 'Goldilocks' range: 2.3 - 4.0]
     D --> E
-    E --> F[Dictionary API Validation<br>Validate existence & retrieve definition/origin]
+    E --> F[Dictionary Validation<br>Validate existence & retrieve definition/origin via MW API with SQLite cache]
     F --> G{Use Semantic Embeddings?}
-    G -- Yes --> H[EmbeddingScorer<br>Compute SentenceTransformer cosine similarity against seed list]
+    G -- Yes --> H[EmbeddingScorer<br>Compute SentenceTransformer cosine similarity against active seed cluster centroid]
     G -- No --> I[ZipfScorer<br>Rarer words are prioritized]
     H --> J[Deduplication & Sorting]
     I --> J
     J --> K{Selection Mode?}
     K -- Yes --> L[Pipeline Selection<br>Auto selects highest score or manual selection in interactive mode]
     K -- No --> M[List Candidates<br>Display all with reuse indicator flags]
-    L --> N[SQLite Database<br>Save selection for date]
+    L --> N[SQLite Database<br>Save selection for date including cluster_id]
     N --> O[FastAPI Backend & Glassmorphic Dashboard]
     M --> O
 ```
 
 ### Detailed Processing Steps
 
-1. **Ingestion**: Raw text corpora are retrieved from Wikipedia, Project Gutenberg, New York Times API, Quotable API, PoetryDB, or Substack publication feeds.
+1. **Ingestion**: Raw text corpora are retrieved from Wikipedia, Project Gutenberg, New York Times API, Quotable API, PoetryDB, or Substack publication feeds (run in parallel).
 2. **Text Cleaning & Tokenization**: Raw text is normalized to lowercase, non-alphabetic characters are removed, and words are filtered against a configurable stop-words list.
 3. **Reusability Check (Early Filtering in Selection Modes)**: When running in selection modes (`auto` or `interactive`), the pipeline queries the SQLite database and filters out any candidate selected as a Word of the Day within the last 365 days *before* performing any Zipf frequency filter, dictionary API calls, or embedding calculation. This avoids wasting network requests and GPU/CPU time.
 4. **Zipf Frequency Filter**: Candidate words are evaluated using the Zipf frequency scale via `wordfreq`. Words that are too common (e.g., "the", "hello") or too rare/OCR noise (e.g., "xjfje") are excluded using a target frequency range (default: `2.3` to `4.0`).
-5. **Dictionary Validation**: Candidates are validated against the Free Dictionary API to confirm they are real English words and to retrieve their official definitions and etymology/origin.
+5. **Dictionary Validation**: Candidates are validated against the Merriam-Webster API to confirm they are real English words and to retrieve their official definitions and etymology/origin. Validations are cached in SQLite to minimize network calls.
 6. **Scoring & Ranking**:
-   - **Embedding Scorer (Default)**: Candidate words are embedded using a SentenceTransformer model (e.g., `all-MiniLM-L6-v2`) and compared against a golden seed list of past selections (`bootstrap.csv`). The score is the average cosine similarity of the candidate's embedding to its $K$-nearest neighbors in the seed list. This aligns the vocabulary with a sophisticated, literary tone.
+   - **Embedding Scorer (Default)**: Candidate words are embedded using a SentenceTransformer model (e.g., `all-MiniLM-L6-v2`) and compared against the active target centroid. The seed embeddings (loaded from `bootstrap.csv` or `word_of_the_day_embeddings.npz`) are clustered using K-Means, and the optimal number of clusters $K$ is determined via the Elbow Method. The scoring process rotates to a new cluster each day (`(last_used_cluster_id + 1) % K`), scoring candidates directly against that cluster's centroid to ensure day-to-day semantic variety.
    - **Zipf Scorer (Fallback)**: Candidates are ranked strictly by rarity (lower Zipf score represents rarer, more interesting words).
 7. **Deduplication & Sorting**: Candidates are deduplicated and sorted by their final score.
-8. **Selection & Persistence**: In **Auto Mode**, the highest-ranked candidate is automatically selected. In **Interactive Mode**, the user can manually choose from the top candidates. In **List Mode**, all candidates are printed (with previously used ones flagged). The chosen word, definition, origin, source, and score are persisted in the SQLite database (`word_of_the_day.db`).
+8. **Selection & Persistence**: In **Auto Mode**, the highest-ranked candidate is automatically selected. In **Interactive Mode**, the user can manually choose from the top candidates. In **List Mode**, all candidates are printed (with previously used ones flagged). The chosen word, definition, origin, source, score, and rotation `cluster_id` are persisted in the SQLite database (`word_of_the_day.db`).
 9. **Delivery**: The FastAPI application exposes endpoint APIs (`/api/word`) to retrieve the selected word and serves them to the interactive web portal.
 
 ---
@@ -198,7 +200,7 @@ uv run python bootstrap_word_of_the_day.py
 │       ├── scheduler.py              # Background daemon thread scheduler
 │       ├── scorers.py                # Zipf frequency and Embedding scorers
 │       └── storage.py                # SQLite database manager (WAL and busy-timeout enabled)
-└── tests/                            # Comprehensive testing suite (154 tests)
+└── tests/                            # Comprehensive testing suite (163 tests)
 ```
 
 ---
