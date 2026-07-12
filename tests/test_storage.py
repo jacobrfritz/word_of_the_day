@@ -228,3 +228,27 @@ def test_db_migration_adds_origin_column(temp_db: Path) -> None:
         cursor.execute("PRAGMA table_info(wotd_history)")
         columns = [col[1] for col in cursor.fetchall()]
         assert "origin" in columns
+
+
+def test_get_used_words(temp_db: Path) -> None:
+    storage = Storage(db_path=temp_db, bootstrap=False)
+
+    # Save words on different dates
+    storage.save_word_of_the_day("2026-07-01", "apple", "fruit", "test", 3.0)
+    storage.save_word_of_the_day("2026-07-05", "banana", "fruit", "test", 3.2)
+    storage.save_word_of_the_day("2026-07-10", "cherry", "fruit", "test", 3.5)
+
+    # 1. Retrieve all used words (days_threshold=None)
+    all_used = storage.get_used_words(days_threshold=None)
+    assert all_used == {"apple", "banana", "cherry"}
+
+    # 2. Retrieve used words within 5 days of 2026-07-10
+    # Expected: "cherry" (2026-07-10) and "banana" (2026-07-05)
+    recent = storage.get_used_words(days_threshold=5, reference_date="2026-07-10")
+    assert recent == {"banana", "cherry"}
+
+    # 3. Retrieve used words within 2 days of 2026-07-10
+    # Expected: "cherry" (2026-07-10)
+    very_recent = storage.get_used_words(days_threshold=2, reference_date="2026-07-10")
+    assert very_recent == {"cherry"}
+

@@ -64,7 +64,7 @@ class DictionaryClient:
     to validate words and retrieve their definitions and etymologies.
     """
 
-    def __init__(self, timeout: float = 5.0) -> None:
+    def __init__(self, timeout: float = 5.0, storage: Any = None) -> None:
         self.timeout = timeout
         self.session = httpx.Client(timeout=timeout)
         self.base_url = settings.dictionary_base_url
@@ -73,8 +73,38 @@ class DictionaryClient:
                 "https://www.dictionaryapi.com/api/v3/references/collegiate/json/"
             )
         self.api_key = settings.merriam_webster_api_key
+        self.storage = storage
 
-    def get_word_definition(self, word: str) -> tuple[bool, str, str | None]:
+    def get_word_definition(
+        self, word: str, storage: Any = None
+    ) -> tuple[bool, str, str | None]:
+        """Validates a word against the Merriam-Webster API and retrieves
+        its primary definition and origin, utilizing caching if storage is provided.
+
+        Args:
+            word: The English word to validate.
+            storage: Optional Storage client override to cache/look up definitions.
+
+        Returns:
+            tuple[bool, str, str | None]:
+                (is_valid, definition_or_error_message, origin)
+        """
+        effective_storage = storage if storage is not None else self.storage
+
+        if effective_storage is not None:
+            cached = effective_storage.get_cached_definition(word)
+            if cached is not None:
+                logger.debug(f"Cache hit for '{word}' (valid={cached[0]})")
+                return cached
+
+        is_valid, info, origin = self._fetch_definition_from_api(word)
+
+        if effective_storage is not None:
+            effective_storage.cache_definition(word, is_valid, info, origin)
+
+        return is_valid, info, origin
+
+    def _fetch_definition_from_api(self, word: str) -> tuple[bool, str, str | None]:
         """Validates a word against the Merriam-Webster API and retrieves
         its primary definition and origin.
 

@@ -186,3 +186,52 @@ def test_dictionary_client_no_definitions() -> None:
         assert is_valid is True
         assert result == "(noun) No definition text found."
         assert origin is None
+
+
+def test_dictionary_client_caching() -> None:
+    """Verifies that DictionaryClient utilizes storage caching when available."""
+    mock_storage = MagicMock()
+
+    # 1. Test Cache Hit
+    # Setup cache: (is_valid, definition, origin)
+    mock_storage.get_cached_definition.return_value = (True, "(noun) cached definition", "cached origin")
+
+    with DictionaryClient(storage=mock_storage) as client:
+        is_valid, result, origin = client.get_word_definition("cachedword")
+
+    assert is_valid is True
+    assert result == "(noun) cached definition"
+    assert origin == "cached origin"
+    mock_storage.get_cached_definition.assert_called_once_with("cachedword")
+
+    # 2. Test Cache Miss
+    # Setup cache: None (miss)
+    mock_storage.get_cached_definition.reset_mock()
+    mock_storage.get_cached_definition.return_value = None
+
+    # Mock definition API call response
+    mock_response = MagicMock(spec=httpx.Response)
+    mock_response.status_code = 200
+    mock_response.json.return_value = [
+        {
+            "fl": "noun",
+            "et": [["text", "Middle English"]],
+            "def": [
+                {
+                    "sseq": [[["sense", {"dt": [["text", "a greeting"]]}]]]
+                }
+            ]
+        }
+    ]
+
+    with DictionaryClient(storage=mock_storage) as client:
+        client.api_key = "dummy_key"
+        with patch.object(client.session, "get", return_value=mock_response):
+            is_valid, result, origin = client.get_word_definition("missword")
+
+    assert is_valid is True
+    assert result == "(noun) a greeting"
+    assert origin == "Middle English"
+    mock_storage.get_cached_definition.assert_called_once_with("missword")
+    mock_storage.cache_definition.assert_called_once_with("missword", True, "(noun) a greeting", "Middle English")
+

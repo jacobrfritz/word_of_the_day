@@ -61,7 +61,7 @@ class WordOfTheDayPipeline:
         """
         self.stop_words = self._load_stop_words(stop_words)
         self._external_client = dictionary_client is not None
-        self.dictionary_client = dictionary_client or DictionaryClient()
+        self.dictionary_client = dictionary_client or DictionaryClient(storage=storage)
         self.scorer = scorer or ZipfScorer()
         self.storage = storage
 
@@ -181,19 +181,11 @@ class WordOfTheDayPipeline:
 
             # --- Cache lookup ---
             if self.storage is not None:
-                cached = self.storage.get_cached_definition(word)
-                if cached is not None:
-                    is_valid, info, origin = cached
-                    logger.debug(f"Cache hit for '{word}' (valid={is_valid})")
-                else:
-                    is_valid, info, origin = self.dictionary_client.get_word_definition(
-                        word
-                    )
-                    self.storage.cache_definition(word, is_valid, info, origin)
-            else:
                 is_valid, info, origin = self.dictionary_client.get_word_definition(
-                    word
+                    word, storage=self.storage
                 )
+            else:
+                is_valid, info, origin = self.dictionary_client.get_word_definition(word)
 
             if is_valid:
                 # If using standard ZipfScorer, the score *is* the zipf score.

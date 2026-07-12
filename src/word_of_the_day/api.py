@@ -132,7 +132,7 @@ def get_word(
         word = record["word"]
         logger.info(f"Resolving definition for historical bootstrapped word: '{word}'")
         try:
-            with DictionaryClient() as dict_client:
+            with DictionaryClient(storage=storage) as dict_client:
                 is_valid, definition, origin = dict_client.get_word_definition(word)
                 if is_valid:
                     storage.save_word_of_the_day(

@@ -238,6 +238,25 @@ class Storage:
             )
             conn.commit()
 
+    def get_used_words(
+        self, days_threshold: int | None = 365, reference_date: str | None = None
+    ) -> set[str]:
+        """
+        Retrieves the set of lowercase words that have been selected as Word of the Day
+        within the days_threshold range prior to and including reference_date.
+        If days_threshold is None, retrieves all previously used words.
+        """
+        query = "SELECT DISTINCT LOWER(word) FROM wotd_history"
+        params: list[Any] = []
+        if days_threshold is not None and reference_date is not None:
+            query += " WHERE date >= date(?, ?) AND date <= ?"
+            params = [reference_date, f"-{days_threshold} days", reference_date]
+
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            return {row[0] for row in cursor.fetchall()}
+
     def is_word_reusable(
         self, word: str, reference_date: str, days_threshold: int = 365
     ) -> bool:

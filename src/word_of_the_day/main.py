@@ -181,7 +181,7 @@ def run_manual_set(
     from .dictionary import DictionaryClient
 
     logger.info(f"Manually setting Word of the Day for {date}: '{word}'")
-    with DictionaryClient() as dict_client:
+    with DictionaryClient(storage=storage) as dict_client:
         is_valid, definition, origin = dict_client.get_word_definition(word)
         if not is_valid:
             logger.warning(f"Word validation warning: {definition}")
@@ -311,11 +311,11 @@ def run_pipeline(
 
     logger.info("Initializing WordOfTheDayPipeline...")
 
-    is_reusable_cb = None
-    if mode != "list":
+    # Load recently used words to filter them out efficiently in memory across all modes
+    used_words = storage.get_used_words(days_threshold=365, reference_date=date)
 
-        def is_reusable_cb(w: str) -> bool:
-            return storage.is_word_reusable(w, date, days_threshold=365)
+    def is_reusable_cb(w: str) -> bool:
+        return w.lower() not in used_words
 
     with WordOfTheDayPipeline(scorer=scorer, storage=storage) as pipeline:
         all_scored: list[tuple[str, str, float]] = []  # (source_name, word, score)
@@ -381,13 +381,8 @@ def run_pipeline(
                     info = candidate.definition
                     cand_score = candidate.score
 
-                    # Check 365-day reusability
-                    is_reusable = storage.is_word_reusable(
-                        word, date, days_threshold=365
-                    )
-                    reuse_indicator = (
-                        "" if is_reusable else " ❌ [Used within 365 days]"
-                    )
+                    # Candidate is already verified to be reusable via is_reusable_cb
+                    reuse_indicator = ""
 
                     score_str = f"Zipf Score: {zipf:.2f}"
                     if use_embeddings and cand_score is not None:
