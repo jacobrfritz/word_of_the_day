@@ -258,7 +258,7 @@ def test_pipeline_with_custom_scorer() -> None:
         scorer=MockReverseScorer(),
     )
 
-    candidates = pipeline.find_candidates("solitude serendipity")
+    candidates = pipeline.find_candidates("solitude serendipity", limit=2)
 
     # "serendipity" has length 11, "solitude" has length 8.
     # Because higher_is_better = True, "serendipity" (longest) should be sorted first.
@@ -287,7 +287,9 @@ def test_pipeline_find_candidates_with_reusable_callback() -> None:
     def is_reusable(word: str) -> bool:
         return word != "solitude"
 
-    candidates = pipeline.find_candidates("solitude serendipity", is_reusable_cb=is_reusable)
+    candidates = pipeline.find_candidates(
+        "solitude serendipity", is_reusable_cb=is_reusable
+    )
 
     # Only serendipity should remain and be checked/validated
     assert len(candidates) == 1

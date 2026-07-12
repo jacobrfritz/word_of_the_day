@@ -1,10 +1,14 @@
 import csv
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from wordfreq import zipf_frequency
 
 from .logger import get_logger
+
+if TYPE_CHECKING:
+    import numpy as np
+    from sentence_transformers import SentenceTransformer
 
 logger = get_logger(__name__)
 
@@ -77,9 +81,6 @@ class EmbeddingScorer:
         try:
             import numpy as np
             from sentence_transformers import SentenceTransformer
-
-            self._np = np
-            self._transformer_class = SentenceTransformer
         except ImportError as e:
             raise ImportError(
                 "EmbeddingScorer requires 'sentence-transformers' "
@@ -90,7 +91,7 @@ class EmbeddingScorer:
         self.seed_words: list[str] = []
         self.seed_embeddings: np.ndarray = np.empty((0, 0))
         self.normalized_seeds: np.ndarray = np.empty((0, 0))
-        self.model: Any = None
+        self.model: SentenceTransformer | None = None
 
         self._initialize()
 
@@ -114,7 +115,8 @@ class EmbeddingScorer:
     def _load_cache(self) -> None:
         """Loads cached embeddings from the npz file."""
         logger.info(f"Loading seed word embeddings cache from {self.cache_npz_path}")
-        np = self._np
+        import numpy as np
+
         try:
             data = np.load(self.cache_npz_path, allow_pickle=True)
             self.seed_words = [str(w) for w in data["words"]]
@@ -133,7 +135,7 @@ class EmbeddingScorer:
     def _compile_cache(self) -> None:
         """Compiles the seed word CSV into a cached npz file."""
         logger.info(f"Compiling seed embeddings from {self.seed_csv_path}")
-        np = self._np
+        import numpy as np
 
         # Read words from CSV
         words = []
@@ -154,11 +156,10 @@ class EmbeddingScorer:
             raise ValueError(f"No valid words found in {self.seed_csv_path}")
 
         # Lazy load model
-        logger.info(f"Initializing SentenceTransformer model '{self.model_name}'...")
-        self.model = self._transformer_class(self.model_name)
+        model = self._lazy_load_model()
 
         logger.info(f"Encoding {len(words)} seed words (this may take a moment)...")
-        embeddings = self.model.encode(words, show_progress_bar=False)
+        embeddings = model.encode(words, show_progress_bar=False)
 
         # Cache results
         try:
@@ -182,11 +183,13 @@ class EmbeddingScorer:
         norms[norms == 0] = 1.0
         self.normalized_seeds = self.seed_embeddings / norms
 
-    def _lazy_load_model(self) -> Any:
+    def _lazy_load_model(self) -> "SentenceTransformer":
         """Loads the transformer model if it hasn't been loaded yet."""
         if self.model is None:
+            from sentence_transformers import SentenceTransformer
+
             logger.info(f"Loading SentenceTransformer model '{self.model_name}'...")
-            self.model = self._transformer_class(self.model_name)
+            self.model = SentenceTransformer(self.model_name)
         return self.model
 
     def score(self, word: str) -> float:
@@ -197,12 +200,16 @@ class EmbeddingScorer:
         if not self.seed_words:
             return 0.0
 
-        np = self._np
+        import numpy as np
+
         model = self._lazy_load_model()
 
         # Embed candidate word
         try:
-            candidate_vector = model.encode([word], show_progress_bar=False)[0]
+            candidate_vector = cast(
+                "np.ndarray",
+                model.encode([word], show_progress_bar=False)[0],
+            )
         except Exception as e:
             logger.error(f"Failed to encode word '{word}': {e}")
             return 0.0

@@ -344,6 +344,7 @@ def test_context_manager() -> None:
         mock_close.assert_called_once()
 
 
+@patch.dict("os.environ", {}, clear=True)
 def test_poetry_db_client_user_agent() -> None:
     """Verifies that compliant User-Agent headers are set correctly."""
     client = PoetryDBClient()

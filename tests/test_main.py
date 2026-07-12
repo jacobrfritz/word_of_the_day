@@ -73,7 +73,8 @@ def test_run_default(
     mock_candidate.word = "serendipity"
     mock_candidate.zipf_score = 3.5
     mock_candidate.definition = "(noun) standard def"
-    mock_pipeline.find_candidates.return_value = [mock_candidate]
+    mock_pipeline.score_candidates.return_value = [("serendipity", 3.5)]
+    mock_pipeline.validate_candidates.return_value = [mock_candidate]
     mock_pipeline_class.return_value = mock_pipeline
 
     with patch.dict(os.environ, {"NYT_API_KEY": "test_key"}):
@@ -126,7 +127,8 @@ def test_main_wikipedia(
     mock_candidate.word = "serendipity"
     mock_candidate.zipf_score = 3.5
     mock_candidate.definition = "(noun) standard def"
-    mock_pipeline.find_candidates.return_value = [mock_candidate]
+    mock_pipeline.score_candidates.return_value = [("serendipity", 3.5)]
+    mock_pipeline.validate_candidates.return_value = [mock_candidate]
     mock_pipeline_class.return_value = mock_pipeline
 
     main.run(source="wikipedia")
@@ -163,7 +165,8 @@ def test_main_gutenberg(
     mock_candidate.word = "serendipity"
     mock_candidate.zipf_score = 3.5
     mock_candidate.definition = "(noun) standard def"
-    mock_pipeline.find_candidates.return_value = [mock_candidate]
+    mock_pipeline.score_candidates.return_value = [("serendipity", 3.5)]
+    mock_pipeline.validate_candidates.return_value = [mock_candidate]
     mock_pipeline_class.return_value = mock_pipeline
 
     main.run(source="gutenberg", book_id="1234")
@@ -196,7 +199,8 @@ def test_main_nyt(
     mock_candidate.word = "serendipity"
     mock_candidate.zipf_score = 3.5
     mock_candidate.definition = "(noun) standard def"
-    mock_pipeline.find_candidates.return_value = [mock_candidate]
+    mock_pipeline.score_candidates.return_value = [("serendipity", 3.5)]
+    mock_pipeline.validate_candidates.return_value = [mock_candidate]
     mock_pipeline_class.return_value = mock_pipeline
 
     with patch.dict(os.environ, {"NYT_API_KEY": "test_key"}):
@@ -243,7 +247,8 @@ def test_main_quotable(
     mock_candidate.word = "serendipity"
     mock_candidate.zipf_score = 3.5
     mock_candidate.definition = "(noun) standard def"
-    mock_pipeline.find_candidates.return_value = [mock_candidate]
+    mock_pipeline.score_candidates.return_value = [("serendipity", 3.5)]
+    mock_pipeline.validate_candidates.return_value = [mock_candidate]
     mock_pipeline_class.return_value = mock_pipeline
 
     main.run(source="quotable", tags="tag1, tag2")
@@ -276,7 +281,8 @@ def test_main_poetry_db(
     mock_candidate.word = "serendipity"
     mock_candidate.zipf_score = 3.5
     mock_candidate.definition = "(noun) standard def"
-    mock_pipeline.find_candidates.return_value = [mock_candidate]
+    mock_pipeline.score_candidates.return_value = [("serendipity", 3.5)]
+    mock_pipeline.validate_candidates.return_value = [mock_candidate]
     mock_pipeline_class.return_value = mock_pipeline
 
     main.run(source="poetry_db", author="Edgar Allan Poe, John Keats")
@@ -313,7 +319,8 @@ def test_main_multiple_sources(
     mock_candidate.word = "serendipity"
     mock_candidate.zipf_score = 3.5
     mock_candidate.definition = "(noun) standard def"
-    mock_pipeline.find_candidates.return_value = [mock_candidate]
+    mock_pipeline.score_candidates.return_value = [("serendipity", 3.5)]
+    mock_pipeline.validate_candidates.return_value = [mock_candidate]
     mock_pipeline_class.return_value = mock_pipeline
 
     main.run(source=["wikipedia", "poetry_db"], author="Edgar Allan Poe")
@@ -372,7 +379,8 @@ def test_main_all_sources(
     mock_candidate.word = "serendipity"
     mock_candidate.zipf_score = 3.5
     mock_candidate.definition = "(noun) standard def"
-    mock_pipeline.find_candidates.return_value = [mock_candidate]
+    mock_pipeline.score_candidates.return_value = [("serendipity", 3.5)]
+    mock_pipeline.validate_candidates.return_value = [mock_candidate]
     mock_pipeline_class.return_value = mock_pipeline
 
     with patch.dict(os.environ, {"NYT_API_KEY": "test_key"}):

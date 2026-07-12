@@ -1,14 +1,15 @@
 # src/word_of_the_day/scheduler.py
-import time
 import threading
+import time
 from datetime import datetime, timedelta
+
 try:
     import zoneinfo
 except ImportError:
     from backports import zoneinfo  # type: ignore
 
-from .logger import get_logger
 from .config import settings
+from .logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -23,7 +24,9 @@ class DailyScheduler:
             logger.info("Scheduler is disabled in configuration.")
             return
         logger.info("Starting background scheduler...")
-        self._thread = threading.Thread(target=self._run, name="WotdScheduler", daemon=True)
+        self._thread = threading.Thread(
+            target=self._run, name="WotdScheduler", daemon=True
+        )
         self._thread.start()
 
     def stop(self) -> None:
@@ -56,10 +59,14 @@ class DailyScheduler:
 
             now = datetime.now(tz)
             # Calculate next midnight
-            next_run = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+            next_run = (now + timedelta(days=1)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
             sleep_seconds = (next_run - now).total_seconds()
 
-            logger.info(f"Next scheduled run at: {next_run.isoformat()} (sleeping for {sleep_seconds:.1f}s)")
+            logger.info(
+                f"Next scheduled run at: {next_run.isoformat()} (sleeping for {sleep_seconds:.1f}s)"
+            )
 
             # Sleep in chunks to allow quick shutdown
             chunk_size = 10

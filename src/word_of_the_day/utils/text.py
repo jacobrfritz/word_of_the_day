@@ -26,10 +26,10 @@ def map_source_name(source: str) -> str:
     """
     if not source:
         return "-"
-    
+
     # Normalize by converting to lowercase and stripping non-alphanumeric chars
     norm = "".join(char for char in source.lower() if char.isalnum())
-    
+
     if norm == "gutenberg":
         return "Classic Books"
     elif norm == "wikipedia":
@@ -42,6 +42,5 @@ def map_source_name(source: str) -> str:
         return "Classic Poetry"
     elif norm == "substack":
         return "Essays & Articles"
-    
-    return source
 
+    return source

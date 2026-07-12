@@ -1,29 +1,32 @@
 # src/word_of_the_day/api.py
+from collections.abc import AsyncGenerator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
+from .config import settings
 from .dictionary import DictionaryClient
 from .logger import get_logger
-from .storage import Storage, WordOfTheDayRecord
-from .config import settings
 from .scheduler import DailyScheduler
+from .storage import Storage, WordOfTheDayRecord
 from .utils import map_source_name
 
 logger = get_logger(__name__)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         response: Response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
@@ -36,12 +39,14 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "img-src 'self' data:;"
         )
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains"
+        )
         return response
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     scheduler = DailyScheduler()
     scheduler.start()
     try:
@@ -77,7 +82,18 @@ app.mount(
     name="static",
 )
 
-storage = Storage()
+
+def get_storage(request: Request) -> Storage:
+    """
+    FastAPI dependency provider to return the persistent Storage client.
+    Binds the state to the request/app instance to avoid global state issues.
+    """
+    if not hasattr(request.app.state, "storage"):
+        request.app.state.storage = Storage()
+    storage = request.app.state.storage
+    if isinstance(storage, Storage):
+        return storage
+    return Storage()
 
 
 @app.get("/api/word", response_model=None)
@@ -85,6 +101,7 @@ def get_word(
     date: str | None = Query(
         None, description="Date in YYYY-MM-DD format (defaults to today)"
     ),
+    storage: Storage = Depends(get_storage),
 ) -> WordOfTheDayRecord:
     """
     Returns the Word of the Day record for the specified date.
@@ -142,7 +159,7 @@ def get_word(
 
 
 @app.get("/api/dates", response_model=list[str])
-def get_dates() -> list[str]:
+def get_dates(storage: Storage = Depends(get_storage)) -> list[str]:
     """
     Returns a sorted list of all dates (YYYY-MM-DD) that have a Word of the Day record.
     Used by the frontend calendar to highlight days with data.
@@ -156,6 +173,7 @@ def get_history(
     limit: int | None = Query(
         None, description="Limit the number of history items returned"
     ),
+    storage: Storage = Depends(get_storage),
 ) -> list[WordOfTheDayRecord]:
     """
     Returns historical Word of the Day selections, ordered by date descending.
@@ -189,7 +207,7 @@ def read_root() -> HTMLResponse:
 
 
 @app.get("/healthz", status_code=200)
-def health_check() -> dict[str, str]:
+def health_check(storage: Storage = Depends(get_storage)) -> dict[str, str]:
     """
     Liveness/Readiness probe endpoint.
     Checks if the database is accessible.
@@ -199,4 +217,4 @@ def health_check() -> dict[str, str]:
         return {"status": "healthy", "database": "connected"}
     except Exception as e:
         logger.error(f"Healthcheck failed: {e}")
-        raise HTTPException(status_code=500, detail="Database connection failed")
+        raise HTTPException(status_code=500, detail="Database connection failed") from e

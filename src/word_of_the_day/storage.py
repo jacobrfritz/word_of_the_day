@@ -2,13 +2,13 @@
 import csv
 import json
 import sqlite3
-from contextlib import contextmanager
 from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, TypedDict
 
-from .logger import get_logger
 from .config import settings
+from .logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -185,9 +185,7 @@ class Storage:
             except sqlite3.Error as e:
                 logger.error(f"Error inserting bootstrap records: {e}")
 
-    def get_cached_definition(
-        self, word: str
-    ) -> tuple[bool, str, str | None] | None:
+    def get_cached_definition(self, word: str) -> tuple[bool, str, str | None] | None:
         """
         Returns the cached dictionary result for a word, or None if not cached.
 

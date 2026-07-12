@@ -44,21 +44,13 @@ class WordSourceGenerator:
         if conn_type in count:
             return count[conn_type]
 
-        # 2. Exact class name matching
-        class_name = conn_type.__name__
-        if class_name in count:
-            return count[class_name]
-
-        # 3. Case-insensitive substring matching
-        #    (checking longer/more specific keys first)
-        class_name_lower = class_name.lower()
-        string_keys = [k for k in count.keys() if isinstance(k, str)]
-        for key in sorted(string_keys, key=len, reverse=True):
-            key_lower = key.lower()
-            if key_lower == class_name_lower or key_lower in class_name_lower:
+        # 2. Case-insensitive exact matching via connector_name method
+        conn_name = connector.connector_name().lower()
+        for key in count:
+            if isinstance(key, str) and key.lower() == conn_name:
                 return count[key]
 
-        # 4. Fallback default
+        # 3. Fallback default
         return 1
 
     def fetch_sources_by_connector(
@@ -154,13 +146,12 @@ class WordSourceGenerator:
         exc_tb: TracebackType | None,
     ) -> None:
         """Exits all managed connectors' context managers."""
-        first_error: BaseException | None = None
+        errors: list[Exception] = []
         for connector in self.connectors:
             try:
                 connector.__exit__(exc_type, exc_val, exc_tb)
-            except BaseException as e:
+            except Exception as e:
                 logger.error(f"Error exiting connector {type(connector).__name__}: {e}")
-                if not first_error:
-                    first_error = e
-        if first_error:
-            raise first_error
+                errors.append(e)
+        if errors:
+            raise ExceptionGroup("Errors occurred during connector teardown", errors)

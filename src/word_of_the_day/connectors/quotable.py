@@ -41,6 +41,9 @@ class QuotableClient(Connector):
 
     BASE_URL = "https://api.quotable.io"
 
+    def connector_name(self) -> str:
+        return "quotable"
+
     def __init__(
         self,
         tags: list[str] | str | None = None,

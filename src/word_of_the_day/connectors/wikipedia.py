@@ -47,6 +47,9 @@ class WikipediaClient(Connector):
     # endpoints cleanly
     BASE_URL = "https://en.wikipedia.org"
 
+    def connector_name(self) -> str:
+        return "wikipedia"
+
     def __init__(
         self,
         app_name: str,

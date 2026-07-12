@@ -8,6 +8,12 @@ class Connector(Protocol):
     Protocol to fetch a corpus of text from a data source.
     """
 
+    def connector_name(self) -> str:
+        """
+        An explicit, strictly typed name for this connector (e.g. 'wikipedia').
+        """
+        ...
+
     def fetch_text_corpus(self) -> str:
         """
         Fetches raw text content from the source.

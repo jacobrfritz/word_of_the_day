@@ -1,13 +1,13 @@
 # src/word_of_the_day/dictionary.py
-import urllib.parse
 import re
+import urllib.parse
 from types import TracebackType
-from typing import Self, Any
+from typing import Any, Self
 
 import httpx
 
-from .logger import get_logger
 from .config import settings
+from .logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -55,7 +55,7 @@ def extract_first_definition(def_data: list[Any]) -> str | None:
                                 and len(dt_item) >= 2
                                 and dt_item[0] == "text"
                             ):
-                                return dt_item[1]
+                                return str(dt_item[1])
     return None
 
 
@@ -69,7 +69,9 @@ class DictionaryClient:
         self.session = httpx.Client(timeout=timeout)
         self.base_url = settings.dictionary_base_url
         if "api.dictionaryapi.dev" in self.base_url:
-            self.base_url = "https://www.dictionaryapi.com/api/v3/references/collegiate/json/"
+            self.base_url = (
+                "https://www.dictionaryapi.com/api/v3/references/collegiate/json/"
+            )
         self.api_key = settings.merriam_webster_api_key
 
     def get_word_definition(self, word: str) -> tuple[bool, str, str | None]:
@@ -85,7 +87,11 @@ class DictionaryClient:
         """
         if not self.api_key:
             logger.error("Merriam-Webster API key is missing from configuration.")
-            return False, "Configuration error: Merriam-Webster API key is missing.", None
+            return (
+                False,
+                "Configuration error: Merriam-Webster API key is missing.",
+                None,
+            )
 
         safe_word = urllib.parse.quote(word.lower().strip())
         url = f"{self.base_url}{safe_word}?key={self.api_key}"
@@ -117,7 +123,7 @@ class DictionaryClient:
                         raw_definition = extract_first_definition(def_data)
                         if not raw_definition:
                             raw_definition = "No definition text found."
-                        
+
                         clean_definition = clean_mw_markup(raw_definition)
 
                         # Extract origin / etymology
@@ -126,7 +132,11 @@ class DictionaryClient:
                         if et_list and isinstance(et_list, list):
                             texts = []
                             for item in et_list:
-                                if isinstance(item, list) and len(item) >= 2 and item[0] == "text":
+                                if (
+                                    isinstance(item, list)
+                                    and len(item) >= 2
+                                    and item[0] == "text"
+                                ):
                                     texts.append(item[1])
                             if texts:
                                 origin = clean_mw_markup(" ".join(texts))

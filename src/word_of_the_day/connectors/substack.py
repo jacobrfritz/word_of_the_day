@@ -43,6 +43,9 @@ class SubstackClient(Connector):
 
     BASE_URL = "https://substack.com"
 
+    def connector_name(self) -> str:
+        return "substack"
+
     def __init__(
         self,
         category: str = "philosophy",

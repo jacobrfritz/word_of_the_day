@@ -18,6 +18,9 @@ class DummyConnector:
         self.fetched_count = 0
         self.close_called = False
 
+    def connector_name(self) -> str:
+        return "dummy"
+
     def fetch_text_corpus(self) -> str:
         self.fetched_count += 1
         return f"Content from {self.name} fetch {self.fetched_count}"
@@ -36,7 +39,8 @@ class DummyConnector:
 
 
 class AnotherDummyConnector(DummyConnector):
-    pass
+    def connector_name(self) -> str:
+        return "another"
 
 
 def test_generator_initialization() -> None:
@@ -68,10 +72,15 @@ def test_generator_context_manager_error_handling() -> None:
     c1 = FailingExitConnector("C1")
     c2 = DummyConnector("C2")
 
-    with pytest.raises(ValueError, match="Failed on exit"):
+    with pytest.raises(ExceptionGroup) as exc_info:
         with WordSourceGenerator([c1, c2]):
             pass
 
+    assert "Errors occurred during connector teardown" in str(exc_info.value)
+    assert any(
+        isinstance(e, ValueError) and "Failed on exit" in str(e)
+        for e in exc_info.value.exceptions
+    )
     assert c1.exited is True
     assert c2.exited is True
 
@@ -113,25 +122,16 @@ def test_generator_count_resolution() -> None:
     assert c1.fetched_count == 2
     assert c2.fetched_count == 3
 
-    # 2. Match by class name (exact)
+    # 2. Match by exact connector name (case-insensitive)
     c1.fetched_count = 0
     c2.fetched_count = 0
-    counts_by_name = {"DummyConnector": 1, "AnotherDummyConnector": 4}
+    counts_by_name = {"dummy": 1, "ANOTHER": 4}
     sources = generator.fetch_sources(count=counts_by_name)
     assert len(sources.split("\n\n")) == 5
     assert c1.fetched_count == 1
     assert c2.fetched_count == 4
 
-    # 3. Match by case-insensitive substring
-    c1.fetched_count = 0
-    c2.fetched_count = 0
-    counts_by_substring = {"dummy": 3, "another": 2}
-    sources = generator.fetch_sources(count=counts_by_substring)
-    assert len(sources.split("\n\n")) == 5
-    assert c1.fetched_count == 3
-    assert c2.fetched_count == 2
-
-    # 4. Fallback default to 1
+    # 3. Fallback default to 1
     c1.fetched_count = 0
     c2.fetched_count = 0
     sources = generator.fetch_sources(count={"Unknown": 5})
@@ -139,7 +139,7 @@ def test_generator_count_resolution() -> None:
     assert c1.fetched_count == 1
     assert c2.fetched_count == 1
 
-    # 5. Invalid count type
+    # 4. Invalid count type
     with pytest.raises(TypeError, match="count must be an integer or a dictionary"):
         generator.fetch_sources(count="invalid")  # type: ignore
 

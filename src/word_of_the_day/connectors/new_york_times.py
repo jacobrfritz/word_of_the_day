@@ -44,6 +44,9 @@ class NewYorkTimesClient(Connector):
 
     BASE_URL = "https://api.nytimes.com"
 
+    def connector_name(self) -> str:
+        return "nyt"
+
     def __init__(
         self,
         api_key: str,

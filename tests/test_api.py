@@ -6,7 +6,6 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-import word_of_the_day.api
 from word_of_the_day.api import app
 from word_of_the_day.storage import Storage
 
@@ -19,14 +18,15 @@ def temp_storage() -> Generator[Storage, None, None]:
 
     storage = Storage(db_path=db_path, bootstrap=False)
 
-    # Store original and override in api module
-    original_storage = word_of_the_day.api.storage
-    word_of_the_day.api.storage = storage
+    # Register FastAPI dependency override
+    from word_of_the_day.api import get_storage
+
+    app.dependency_overrides[get_storage] = lambda: storage
 
     yield storage
 
     # Restore
-    word_of_the_day.api.storage = original_storage
+    app.dependency_overrides.pop(get_storage, None)
     if db_path.exists():
         db_path.unlink()
 
@@ -136,7 +136,11 @@ def test_security_headers(client: TestClient) -> None:
 
 def test_cors_headers(client: TestClient) -> None:
     # Verify CORS headers are present on API requests
-    response = client.options("/api/word", headers={"origin": "http://example.com", "access-control-request-method": "GET"})
+    response = client.options(
+        "/api/word",
+        headers={
+            "origin": "http://example.com",
+            "access-control-request-method": "GET",
+        },
+    )
     assert response.headers.get("access-control-allow-origin") == "http://example.com"
-
-

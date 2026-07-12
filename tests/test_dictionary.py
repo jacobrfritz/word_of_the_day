@@ -35,12 +35,7 @@ def test_dictionary_client_success() -> None:
         mock_data = [
             {
                 "fl": "noun",
-                "et": [
-                    [
-                        "text",
-                        "Middle English, from Latin {it}cannabis{/it}"
-                    ]
-                ],
+                "et": [["text", "Middle English, from Latin {it}cannabis{/it}"]],
                 "def": [
                     {
                         "sseq": [
@@ -51,15 +46,15 @@ def test_dictionary_client_success() -> None:
                                         "dt": [
                                             [
                                                 "text",
-                                                "{bc}an utterance of 'hello' as a {a_link|greeting}"
+                                                "{bc}an utterance of 'hello' as a {a_link|greeting}",
                                             ]
                                         ]
-                                    }
+                                    },
                                 ]
                             ]
                         ]
                     }
-                ]
+                ],
             }
         ]
         mock_response = MagicMock(spec=httpx.Response)

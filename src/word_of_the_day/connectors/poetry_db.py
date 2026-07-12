@@ -62,6 +62,9 @@ class PoetryDBClient(Connector):
 
     BASE_URL = "https://poetrydb.org"
 
+    def connector_name(self) -> str:
+        return "poetry_db"
+
     def __init__(
         self,
         author: str | list[str] | None = None,

@@ -61,6 +61,9 @@ class GutenbergClient(Connector):
     A connector to fetch books from Project Gutenberg via gutenbergpy.
     """
 
+    def connector_name(self) -> str:
+        return "gutenberg"
+
     def __init__(
         self,
         book_id: int | str | None = None,

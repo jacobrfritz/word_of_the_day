@@ -1,8 +1,9 @@
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
-from typing import TYPE_CHECKING, Callable, Self
+from typing import TYPE_CHECKING, Self
 
 from wordfreq import zipf_frequency
 
@@ -185,10 +186,14 @@ class WordOfTheDayPipeline:
                     is_valid, info, origin = cached
                     logger.debug(f"Cache hit for '{word}' (valid={is_valid})")
                 else:
-                    is_valid, info, origin = self.dictionary_client.get_word_definition(word)
+                    is_valid, info, origin = self.dictionary_client.get_word_definition(
+                        word
+                    )
                     self.storage.cache_definition(word, is_valid, info, origin)
             else:
-                is_valid, info, origin = self.dictionary_client.get_word_definition(word)
+                is_valid, info, origin = self.dictionary_client.get_word_definition(
+                    word
+                )
 
             if is_valid:
                 # If using standard ZipfScorer, the score *is* the zipf score.
@@ -242,12 +247,14 @@ class WordOfTheDayPipeline:
         unique_words = self.clean_text(text)
         if is_reusable_cb:
             unique_words = {w for w in unique_words if is_reusable_cb(w)}
-        scored = self.score_and_filter(unique_words, min_score=min_score, max_score=max_score)
+        scored = self.score_and_filter(
+            unique_words, min_score=min_score, max_score=max_score
+        )
         if shuffle:
             import random
+
             random.shuffle(scored)
         return scored
-
 
     def find_candidates(
         self,
@@ -284,7 +291,6 @@ class WordOfTheDayPipeline:
         return self.validate_candidates(scored, limit=limit)
 
     def close(self) -> None:
-
         """Close the underlying dictionary client session.
 
         Only closes if the client was created internally.
