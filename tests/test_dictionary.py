@@ -2,7 +2,18 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 
-from word_of_the_day.dictionary import DictionaryClient
+from word_of_the_day.dictionary import DictionaryClient, clean_mw_markup
+
+
+def test_clean_mw_markup() -> None:
+    """Verifies that clean_mw_markup correctly cleans MW markup tags."""
+    assert clean_mw_markup("{it}cannabis{/it} hemp") == "cannabis hemp"
+    assert clean_mw_markup("{bc}marked by force") == ": marked by force"
+    assert clean_mw_markup("greeting {a_link|word} text") == "greeting word text"
+    assert clean_mw_markup("see {sx|taciturn||} here") == "see taciturn here"
+    assert clean_mw_markup("refer to {d_link|word|definition}") == "refer to word"
+    assert clean_mw_markup(None) is None
+    assert clean_mw_markup("") == ""
 
 
 def test_dictionary_client_context_manager() -> None:
@@ -17,21 +28,38 @@ def test_dictionary_client_context_manager() -> None:
 
 def test_dictionary_client_success() -> None:
     """Verifies get_word_definition returns True, formatted definition,
-    and origin on 200.
+    and origin on 200 with valid Merriam-Webster Collegiate response.
     """
     with DictionaryClient() as client:
+        client.api_key = "dummy_key"
         mock_data = [
             {
-                "word": "hello",
-                "origin": "early 19th century...",
-                "meanings": [
-                    {
-                        "partOfSpeech": "noun",
-                        "definitions": [
-                            {"definition": "An utterance of 'hello' as a greeting."}
-                        ],
-                    }
+                "fl": "noun",
+                "et": [
+                    [
+                        "text",
+                        "Middle English, from Latin {it}cannabis{/it}"
+                    ]
                 ],
+                "def": [
+                    {
+                        "sseq": [
+                            [
+                                [
+                                    "sense",
+                                    {
+                                        "dt": [
+                                            [
+                                                "text",
+                                                "{bc}an utterance of 'hello' as a {a_link|greeting}"
+                                            ]
+                                        ]
+                                    }
+                                ]
+                            ]
+                        ]
+                    }
+                ]
             }
         ]
         mock_response = MagicMock(spec=httpx.Response)
@@ -44,16 +72,27 @@ def test_dictionary_client_success() -> None:
             is_valid, result, origin = client.get_word_definition("hello")
 
         assert is_valid is True
-        assert result == "(noun) An utterance of 'hello' as a greeting."
-        assert origin == "early 19th century..."
+        assert result == "(noun) : an utterance of 'hello' as a greeting"
+        assert origin == "Middle English, from Latin cannabis"
         mock_get.assert_called_once_with(
-            "https://api.dictionaryapi.dev/api/v2/entries/en/hello"
+            "https://www.dictionaryapi.com/api/v3/references/collegiate/json/hello?key=dummy_key"
         )
+
+
+def test_dictionary_client_missing_key() -> None:
+    """Verifies get_word_definition returns False when key is missing."""
+    with DictionaryClient() as client:
+        client.api_key = None
+        is_valid, result, origin = client.get_word_definition("hello")
+        assert is_valid is False
+        assert "Configuration error" in result
+        assert origin is None
 
 
 def test_dictionary_client_not_found() -> None:
     """Verifies get_word_definition returns False on 404."""
     with DictionaryClient() as client:
+        client.api_key = "dummy_key"
         mock_response = MagicMock(spec=httpx.Response)
         mock_response.status_code = 404
 
@@ -65,9 +104,29 @@ def test_dictionary_client_not_found() -> None:
         assert origin is None
 
 
+def test_dictionary_client_spelling_suggestions() -> None:
+    """Verifies get_word_definition returns False when MW returns spelling
+    suggestions instead of word entry data.
+    """
+    with DictionaryClient() as client:
+        client.api_key = "dummy_key"
+        mock_response = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        # MW returns list of strings for suggestions
+        mock_response.json.return_value = ["impetus", "impulse"]
+
+        with patch.object(client.session, "get", return_value=mock_response):
+            is_valid, result, origin = client.get_word_definition("impetu")
+
+        assert is_valid is False
+        assert result == "Not a valid English word."
+        assert origin is None
+
+
 def test_dictionary_client_api_error() -> None:
     """Verifies get_word_definition returns False on other status codes."""
     with DictionaryClient() as client:
+        client.api_key = "dummy_key"
         mock_response = MagicMock(spec=httpx.Response)
         mock_response.status_code = 500
 
@@ -82,6 +141,7 @@ def test_dictionary_client_api_error() -> None:
 def test_dictionary_client_network_error() -> None:
     """Verifies get_word_definition handles HTTPError exceptions gracefully."""
     with DictionaryClient() as client:
+        client.api_key = "dummy_key"
         with patch.object(
             client.session,
             "get",
@@ -97,6 +157,7 @@ def test_dictionary_client_network_error() -> None:
 def test_dictionary_client_empty_response() -> None:
     """Verifies get_word_definition handles unexpected response formats."""
     with DictionaryClient() as client:
+        client.api_key = "dummy_key"
         mock_response = MagicMock(spec=httpx.Response)
         mock_response.status_code = 200
         mock_response.json.return_value = []
@@ -104,25 +165,20 @@ def test_dictionary_client_empty_response() -> None:
         with patch.object(client.session, "get", return_value=mock_response):
             is_valid, result, origin = client.get_word_definition("hello")
 
-        assert is_valid is True
-        assert result == "Word is valid, but no definition layout was found."
+        assert is_valid is False
+        assert result == "Not a valid English word."
         assert origin is None
 
 
 def test_dictionary_client_no_definitions() -> None:
-    """Verifies get_word_definition handles response with meanings but no
-    definitions.
-    """
+    """Verifies get_word_definition handles response with no definitions list."""
     with DictionaryClient() as client:
+        client.api_key = "dummy_key"
         mock_data = [
             {
-                "word": "hello",
-                "meanings": [
-                    {
-                        "partOfSpeech": "noun",
-                        "definitions": [],
-                    }
-                ],
+                "fl": "noun",
+                "et": [],
+                "def": [],
             }
         ]
         mock_response = MagicMock(spec=httpx.Response)
@@ -133,5 +189,5 @@ def test_dictionary_client_no_definitions() -> None:
             is_valid, result, origin = client.get_word_definition("hello")
 
         assert is_valid is True
-        assert result == "Word is valid, but no definition layout was found."
+        assert result == "(noun) No definition text found."
         assert origin is None
