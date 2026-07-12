@@ -1,7 +1,8 @@
 # src/word_of_the_day/dictionary.py
 import urllib.parse
+import re
 from types import TracebackType
-from typing import Self
+from typing import Self, Any
 
 import httpx
 
@@ -11,20 +12,68 @@ from .config import settings
 logger = get_logger(__name__)
 
 
-class DictionaryClient:
+def clean_mw_markup(text: str | None) -> str | None:
+    """Strips Merriam-Webster custom formatting tokens (like {it}, {bc},
+    {a_link|...}) from the text.
     """
-    A client for the Free Dictionary API (api.dictionaryapi.dev)
-    to validate words and retrieve their definitions.
+    if not text:
+        return text
+    # Replace italics {it}text{/it} -> text
+    text = re.sub(r"\{it\}(.*?)\{/it\}", r"\1", text)
+    # Replace bold colon {bc} -> ': '
+    text = text.replace("{bc}", ": ")
+    # Replace links {a_link|word} or other links like {sx|word||} -> word
+    text = re.sub(r"\{[a-z_]+\|(.*?)(?:\|.*?)*\}", r"\1", text)
+    # Replace any other leftover curly brace tokens {tag} -> ''
+    text = re.sub(r"\{.*?\}", "", text)
+    return text.strip()
+
+
+def extract_first_definition(def_data: list[Any]) -> str | None:
+    """Recursively parses Merriam-Webster's nested 'def' structure
+    to extract the first definition text.
+    """
+    for d in def_data:
+        if not isinstance(d, dict):
+            continue
+        sseq = d.get("sseq")
+        if not sseq or not isinstance(sseq, list):
+            continue
+        for seq in sseq:
+            if not isinstance(seq, list):
+                continue
+            for item in seq:
+                if not isinstance(item, list) or len(item) < 2:
+                    continue
+                # item is e.g. ["sense", sense_dict]
+                if item[0] == "sense" and isinstance(item[1], dict):
+                    dt = item[1].get("dt")
+                    if dt and isinstance(dt, list):
+                        for dt_item in dt:
+                            if (
+                                isinstance(dt_item, list)
+                                and len(dt_item) >= 2
+                                and dt_item[0] == "text"
+                            ):
+                                return dt_item[1]
+    return None
+
+
+class DictionaryClient:
+    """A client for the Merriam-Webster Collegiate Dictionary API
+    to validate words and retrieve their definitions and etymologies.
     """
 
     def __init__(self, timeout: float = 5.0) -> None:
         self.timeout = timeout
         self.session = httpx.Client(timeout=timeout)
         self.base_url = settings.dictionary_base_url
+        if "api.dictionaryapi.dev" in self.base_url:
+            self.base_url = "https://www.dictionaryapi.com/api/v3/references/collegiate/json/"
+        self.api_key = settings.merriam_webster_api_key
 
     def get_word_definition(self, word: str) -> tuple[bool, str, str | None]:
-        """
-        Validates a word against the Free Dictionary API and retrieves
+        """Validates a word against the Merriam-Webster API and retrieves
         its primary definition and origin.
 
         Args:
@@ -34,35 +83,60 @@ class DictionaryClient:
             tuple[bool, str, str | None]:
                 (is_valid, definition_or_error_message, origin)
         """
-        # URL encode the word to handle any special characters safely
+        if not self.api_key:
+            logger.error("Merriam-Webster API key is missing from configuration.")
+            return False, "Configuration error: Merriam-Webster API key is missing.", None
+
         safe_word = urllib.parse.quote(word.lower().strip())
-        url = f"{self.base_url}{safe_word}"
+        url = f"{self.base_url}{safe_word}?key={self.api_key}"
 
         try:
             response = self.session.get(url)
 
             if response.status_code == 200:
                 data = response.json()
-                # Safely navigate the nested dictionary response
-                # to extract the definition and origin
-                origin = None
-                if data and isinstance(data, list):
-                    origin = data[0].get("origin")
-                    meanings = data[0].get("meanings", [])
-                    if meanings:
-                        definitions = meanings[0].get("definitions", [])
-                        if definitions:
-                            definition = definitions[0].get(
-                                "definition", "No definition text found."
-                            )
-                            part_of_speech = meanings[0].get("partOfSpeech", "unknown")
-                            return True, f"({part_of_speech}) {definition}", origin
+
+                if not data:
+                    return False, "Not a valid English word.", None
+
+                if isinstance(data, list):
+                    if len(data) == 0:
+                        return False, "Not a valid English word.", None
+                    if isinstance(data[0], str):
+                        # Merriam-Webster returns spelling suggestions (list of strings)
+                        # if the word is not found
+                        return False, "Not a valid English word.", None
+
+                    first_entry = data[0]
+                    if isinstance(first_entry, dict):
+                        # Extract part of speech
+                        part_of_speech = first_entry.get("fl", "unknown")
+
+                        # Extract definition
+                        def_data = first_entry.get("def", [])
+                        raw_definition = extract_first_definition(def_data)
+                        if not raw_definition:
+                            raw_definition = "No definition text found."
+                        
+                        clean_definition = clean_mw_markup(raw_definition)
+
+                        # Extract origin / etymology
+                        et_list = first_entry.get("et")
+                        origin = None
+                        if et_list and isinstance(et_list, list):
+                            texts = []
+                            for item in et_list:
+                                if isinstance(item, list) and len(item) >= 2 and item[0] == "text":
+                                    texts.append(item[1])
+                            if texts:
+                                origin = clean_mw_markup(" ".join(texts))
+
+                        return True, f"({part_of_speech}) {clean_definition}", origin
+
                 return True, "Word is valid, but no definition layout was found.", None
 
             elif response.status_code == 404:
-                # 404 means the word was not found in the dictionary (invalid word)
                 return False, "Not a valid English word.", None
-
             else:
                 return False, f"API error status code: {response.status_code}", None
 

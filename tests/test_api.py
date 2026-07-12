@@ -66,7 +66,7 @@ def test_get_word_success(client: TestClient, temp_storage: Storage) -> None:
     assert data["date"] == "2026-07-10"
     assert data["word"] == "serendipity"
     assert data["definition"] == "happy chance"
-    assert data["source"] == "wikipedia"
+    assert data["source"] == "Encyclopedia"
     assert data["score"] == 3.5
     assert data["origin"] == "test origin"
 

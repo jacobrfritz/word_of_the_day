@@ -6,20 +6,12 @@ ENV UV_LINK_MODE=copy
 
 WORKDIR /app
 
-# Copy dependency configuration and lock files
+# Copy dependency configuration and lock files (README.md is not needed by uv sync --no-install-project)
 COPY pyproject.toml uv.lock ./
 
-# Install dependencies (without the project itself first, for caching)
+# Install dependencies (without the project itself, for caching)
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project --no-dev --all-extras
-
-# Copy README (required by build backend) and source code
-COPY README.md ./
-COPY src/ /app/src/
-
-# Install the project
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --all-extras
 
 # Stage 2: Runtime image
 FROM python:3.12-slim-bookworm AS runner
@@ -34,6 +26,7 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 WORKDIR /app
 
 ENV PATH="/app/.venv/bin:$PATH"
+ENV PYTHONPATH="/app/src"
 ENV API_HOST="0.0.0.0"
 ENV API_PORT="8000"
 ENV HF_HOME="/app/cache/huggingface"
@@ -45,6 +38,10 @@ RUN groupadd -g 10001 appgroup && \
     touch /app/word_of_the_day.db && \
     chown -R appuser:appgroup /app && \
     chmod -R 775 /app/logs /app/cache/huggingface /app/word_of_the_day.db
+
+# Create a wrapper script so that the 'word_of_the_day' executable name still works
+RUN echo '#!/bin/sh\nexec python -m word_of_the_day.cli "$@"' > /usr/local/bin/word_of_the_day && \
+    chmod +x /usr/local/bin/word_of_the_day
 
 # Copy virtual environment (cached unless dependencies in uv.lock change)
 COPY --from=builder /app/.venv /app/.venv

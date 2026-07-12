@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 
 from .logger import get_logger, setup_logging
 from .config import settings
+from .utils import map_source_name
 
 logger = get_logger(__name__)
 
@@ -267,7 +268,7 @@ def run(
                     conn_name = type(conn).__name__
                     if conn_name.endswith("Client"):
                         conn_name = conn_name[:-6]
-                    source_texts[conn_name] = "\n\n".join(texts)
+                    source_texts[map_source_name(conn_name)] = "\n\n".join(texts)
                 content = "\n\n".join(source_texts.values())
             else:
                 content = generator.fetch_sources(count=1, ignore_errors=True)
@@ -309,6 +310,10 @@ def run(
 
     logger.info("Initializing WordOfTheDayPipeline...")
 
+    is_reusable_cb = None
+    if mode != "list":
+        is_reusable_cb = lambda w: storage.is_word_reusable(w, date, days_threshold=365)
+
     with WordOfTheDayPipeline(scorer=scorer) as pipeline:
         all_candidates = []
         for source_name, text in source_texts.items():
@@ -327,6 +332,7 @@ def run(
                 max_score=max_score,
                 limit=fetch_limit,
                 shuffle=shuffle,
+                is_reusable_cb=is_reusable_cb,
             )
             for candidate in candidates:
                 all_candidates.append((source_name, candidate))

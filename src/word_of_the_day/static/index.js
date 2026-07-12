@@ -23,13 +23,14 @@ const elements = {
   lookupBtn: document.getElementById('lookupBtn'),
   historyList: document.getElementById('historyList'),
   errorContainer: document.getElementById('errorContainer'),
-  loadingOverlay: document.getElementById('loadingOverlay')
+  loadingOverlay: document.getElementById('loadingOverlay'),
+  speakBtn: document.getElementById('speakBtn'),
+  copyBtn: document.getElementById('copyBtn')
 };
 
 // Helper to format date string nicely
 function formatFriendlyDate(dateStr) {
   const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-  // Parse local timezone date correctly to avoid offset errors
   const parts = dateStr.split('-');
   const date = new Date(parts[0], parts[1] - 1, parts[2]);
   return date.toLocaleDateString('en-US', options);
@@ -58,6 +59,7 @@ async function loadWord(date) {
     // Update UI
     activeDate = date;
     elements.wordDate.textContent = formatFriendlyDate(data.date);
+    elements.lookupDate.value = data.date;
     
     // Parse definition and part of speech
     let wordStr = data.word;
@@ -75,10 +77,11 @@ async function loadWord(date) {
     elements.wordPos.textContent = posStr;
     elements.wordDefinition.textContent = defStr;
     
-    if (data.origin) {
+    if (data.origin && data.origin.trim() !== '' && data.origin.trim().toLowerCase() !== 'not available') {
       elements.wordOriginText.textContent = data.origin;
       elements.wordOriginBox.style.display = 'block';
     } else {
+      elements.wordOriginText.textContent = 'Not available';
       elements.wordOriginBox.style.display = 'none';
     }
     
@@ -99,7 +102,6 @@ async function loadWord(date) {
   } catch (err) {
     elements.errorContainer.style.display = 'block';
     elements.errorContainer.textContent = `No Word of the Day was chosen for ${formatFriendlyDate(date)}.`;
-    // Keep active fields as-is, just clear loader
     return false;
   } finally {
     setLoader(false);
@@ -115,7 +117,7 @@ async function loadHistory() {
     
     elements.historyList.innerHTML = '';
     if (data.length === 0) {
-      elements.historyList.innerHTML = '<div style="color: var(--text-muted); font-size: 0.9rem; text-align: center; padding: 1rem;">No history found yet. Run the selector script!</div>';
+      elements.historyList.innerHTML = '<div style="color: var(--text-muted); font-size: 0.9rem; text-align: center; padding: 2rem; font-family: monospace;">No history found. Run the generator script!</div>';
       return;
     }
     
@@ -154,31 +156,133 @@ function updateSidebarSelection(date) {
   });
 }
 
+// Text to speech implementation
+function speakWord() {
+  const word = elements.wordText.textContent;
+  if (!word || word === '-') return;
+  
+  if ('speechSynthesis' in window) {
+    // Cancel any ongoing speech
+    window.speechSynthesis.cancel();
+    
+    const utterance = new SpeechSynthesisUtterance(word);
+    
+    // Select a premium English voice if available
+    const voices = window.speechSynthesis.getVoices();
+    const preferredVoice = voices.find(voice => 
+      voice.lang.startsWith('en-') && 
+      (voice.name.includes('Google') || voice.name.includes('Natural') || voice.name.includes('Premium'))
+    ) || voices.find(voice => voice.lang.startsWith('en'));
+    
+    if (preferredVoice) {
+      utterance.voice = preferredVoice;
+    }
+    
+    utterance.rate = 0.9; // Slightly slower for clear pronunciation
+    window.speechSynthesis.speak(utterance);
+  }
+}
+
+// Copy word & definition to clipboard
+function copyWordDetails() {
+  const word = elements.wordText.textContent;
+  const pos = elements.wordPos.textContent;
+  const definition = elements.wordDefinition.textContent;
+  const origin = elements.wordOriginText.textContent;
+  const source = elements.wordSource.textContent;
+  
+  if (!word || word === '-') return;
+  
+  const originStr = origin && origin !== 'Not available' ? `\n\nOrigin:\n${origin}` : '';
+  const textToCopy = `Word of the Day: ${word} (${pos})\nDefinition: ${definition}${originStr}\n\nSource: ${source}`;
+  
+  navigator.clipboard.writeText(textToCopy).then(() => {
+    const tooltip = elements.copyBtn.querySelector('.tooltip');
+    if (tooltip) {
+      tooltip.classList.add('show');
+      setTimeout(() => tooltip.classList.remove('show'), 2000);
+    }
+  }).catch(err => {
+    console.error('Clipboard copy failed:', err);
+  });
+}
+
+// Theme Switcher Initialization
+function initThemeSwitcher() {
+  const savedTheme = localStorage.getItem('vocabulary-theme') || 'gold';
+  setTheme(savedTheme);
+  
+  document.querySelectorAll('.theme-dot').forEach(dot => {
+    dot.addEventListener('click', () => {
+      const theme = dot.dataset.theme;
+      setTheme(theme);
+    });
+  });
+}
+
+function setTheme(theme) {
+  // Clear previous body theme classes
+  document.body.classList.remove('theme-nordic', 'theme-forest');
+  
+  // Set theme class on body
+  if (theme !== 'gold') {
+    document.body.classList.add(`theme-${theme}`);
+  }
+  
+  // Save preference
+  localStorage.setItem('vocabulary-theme', theme);
+  
+  // Update active state in UI
+  document.querySelectorAll('.theme-dot').forEach(dot => {
+    if (dot.dataset.theme === theme) {
+      dot.classList.add('active');
+    } else {
+      dot.classList.remove('active');
+    }
+  });
+}
+
 // Initialize application events
 document.addEventListener('DOMContentLoaded', () => {
-  // Set default input date to today
+  // Init Theme selector
+  initThemeSwitcher();
+  
+  // Pre-load voices for speechSynthesis
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.getVoices();
+  }
+
+  // Default to today initially as a placeholder
   const todayStr = getLocalDateString();
   elements.lookupDate.value = todayStr;
-  
-  // Load today's word, fallback to most recent if not found
-  loadWord(todayStr).then(async (success) => {
-    if (!success) {
-      try {
-        const historyResponse = await fetch('/api/history?limit=1');
-        if (historyResponse.ok) {
-          const historyData = await historyResponse.json();
-          if (historyData && historyData.length > 0) {
-            // Clear the error message since we are showing the latest historical word
-            elements.errorContainer.style.display = 'none';
-            await loadWord(historyData[0].date);
-          }
-        }
-      } catch (historyErr) {
-        console.error('Failed to load fallback historical word:', historyErr);
+
+  // Fetch the most recent historical word to use its date as default
+  fetch('/api/history?limit=1')
+    .then(response => {
+      if (response.ok) {
+        return response.json();
       }
-    }
-    loadHistory();
-  });
+      throw new Error('Failed to fetch history');
+    })
+    .then(async (historyData) => {
+      let targetDate = todayStr;
+      if (historyData && historyData.length > 0) {
+        targetDate = historyData[0].date;
+      }
+      elements.lookupDate.value = targetDate;
+      await loadWord(targetDate);
+      loadHistory();
+    })
+    .catch(async (err) => {
+      console.error('Error determining default date, falling back to today:', err);
+      elements.lookupDate.value = todayStr;
+      await loadWord(todayStr);
+      loadHistory();
+    });
+
+  // Bind Actions
+  if (elements.speakBtn) elements.speakBtn.addEventListener('click', speakWord);
+  if (elements.copyBtn) elements.copyBtn.addEventListener('click', copyWordDetails);
 
   // Bind Lookup button click
   elements.lookupBtn.addEventListener('click', () => {

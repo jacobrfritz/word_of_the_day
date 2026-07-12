@@ -17,3 +17,31 @@ def get_text(path: str) -> str | None:
     except PermissionError:
         logger.error("You do not have permission to access 'article.txt'.")
         return None
+
+
+def map_source_name(source: str) -> str:
+    """
+    Maps a raw source key or class name (e.g. 'Gutenberg', 'Wikipedia') to a
+    more descriptive and user-friendly name, keeping the scraping aspect hidden.
+    """
+    if not source:
+        return "-"
+    
+    # Normalize by converting to lowercase and stripping non-alphanumeric chars
+    norm = "".join(char for char in source.lower() if char.isalnum())
+    
+    if norm == "gutenberg":
+        return "Classic Books"
+    elif norm == "wikipedia":
+        return "Encyclopedia"
+    elif norm in ("newyorktimes", "nyt"):
+        return "News Articles"
+    elif norm == "quotable":
+        return "Famous Quotes"
+    elif norm == "poetrydb":
+        return "Classic Poetry"
+    elif norm == "substack":
+        return "Essays & Articles"
+    
+    return source
+

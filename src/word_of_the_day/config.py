@@ -13,6 +13,7 @@ class Settings(BaseSettings):
 
     # API Credentials
     nyt_api_key: str = Field(default="", validation_alias="NYT_API_KEY")
+    merriam_webster_api_key: str = Field(default="", validation_alias="MERRIAM_WEBSTER_API_KEY")
 
     # Connector URLs & User Agents
     nyt_base_url: str = Field(default="https://api.nytimes.com", validation_alias="NYT_BASE_URL")
@@ -21,7 +22,7 @@ class Settings(BaseSettings):
     substack_base_url: str = Field(default="https://substack.com", validation_alias="SUBSTACK_BASE_URL")
     wikipedia_base_url: str = Field(default="https://en.wikipedia.org", validation_alias="WIKIPEDIA_BASE_URL")
     dictionary_base_url: str = Field(
-        default="https://api.dictionaryapi.dev/api/v2/entries/en/",
+        default="https://www.dictionaryapi.com/api/v3/references/collegiate/json/",
         validation_alias="DICTIONARY_BASE_URL",
     )
     podcast_feed_url: str = Field(

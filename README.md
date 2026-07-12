@@ -21,6 +21,48 @@ A comprehensive daily vocabulary generator, analytics pipeline, and portal dashb
 
 ---
 
+## Architecture & Data Flow
+
+The diagram below outlines how text is ingested, filtered, validated, scored, and served as the daily Word of the Day.
+
+```mermaid
+graph TD
+    A[Digital Text Sources<br>Wikipedia, Gutenberg, NYT, etc.] --> B[Text Cleaning & Tokenization<br>Lowercase, strip punctuation, filter stop words]
+    B --> C{Selection Mode?}
+    C -- Yes --> D[365-day Reuse Check<br>Filter out recently selected words early]
+    C -- No --> E[Zipf Frequency Filter<br>Filter for 'Goldilocks' range: 2.3 - 4.0]
+    D --> E
+    E --> F[Dictionary API Validation<br>Validate existence & retrieve definition/origin]
+    F --> G{Use Semantic Embeddings?}
+    G -- Yes --> H[EmbeddingScorer<br>Compute SentenceTransformer cosine similarity against seed list]
+    G -- No --> I[ZipfScorer<br>Rarer words are prioritized]
+    H --> J[Deduplication & Sorting]
+    I --> J
+    J --> K{Selection Mode?}
+    K -- Yes --> L[Pipeline Selection<br>Auto selects highest score or manual selection in interactive mode]
+    K -- No --> M[List Candidates<br>Display all with reuse indicator flags]
+    L --> N[SQLite Database<br>Save selection for date]
+    N --> O[FastAPI Backend & Glassmorphic Dashboard]
+    M --> O
+```
+
+### Detailed Processing Steps
+
+1. **Ingestion**: Raw text corpora are retrieved from Wikipedia, Project Gutenberg, New York Times API, Quotable API, PoetryDB, or Substack publication feeds.
+2. **Text Cleaning & Tokenization**: Raw text is normalized to lowercase, non-alphabetic characters are removed, and words are filtered against a configurable stop-words list.
+3. **Reusability Check (Early Filtering in Selection Modes)**: When running in selection modes (`auto` or `interactive`), the pipeline queries the SQLite database and filters out any candidate selected as a Word of the Day within the last 365 days *before* performing any Zipf frequency filter, dictionary API calls, or embedding calculation. This avoids wasting network requests and GPU/CPU time.
+4. **Zipf Frequency Filter**: Candidate words are evaluated using the Zipf frequency scale via `wordfreq`. Words that are too common (e.g., "the", "hello") or too rare/OCR noise (e.g., "xjfje") are excluded using a target frequency range (default: `2.3` to `4.0`).
+5. **Dictionary Validation**: Candidates are validated against the Free Dictionary API to confirm they are real English words and to retrieve their official definitions and etymology/origin.
+6. **Scoring & Ranking**:
+   - **Embedding Scorer (Default)**: Candidate words are embedded using a SentenceTransformer model (e.g., `all-MiniLM-L6-v2`) and compared against a golden seed list of past selections (`bootstrap.csv`). The score is the average cosine similarity of the candidate's embedding to its $K$-nearest neighbors in the seed list. This aligns the vocabulary with a sophisticated, literary tone.
+   - **Zipf Scorer (Fallback)**: Candidates are ranked strictly by rarity (lower Zipf score represents rarer, more interesting words).
+7. **Deduplication & Sorting**: Candidates are deduplicated and sorted by their final score.
+8. **Selection & Persistence**: In **Auto Mode**, the highest-ranked candidate is automatically selected. In **Interactive Mode**, the user can manually choose from the top candidates. In **List Mode**, all candidates are printed (with previously used ones flagged). The chosen word, definition, origin, source, and score are persisted in the SQLite database (`word_of_the_day.db`).
+9. **Delivery**: The FastAPI application exposes endpoint APIs (`/api/word`) to retrieve the selected word and serves them to the interactive web portal.
+
+---
+
+
 ## Setup & Installation
 
 This project uses `uv` for fast dependency and environment management.

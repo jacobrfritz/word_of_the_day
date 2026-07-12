@@ -2,7 +2,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
-from typing import Self
+from typing import Callable, Self
 
 from wordfreq import zipf_frequency
 
@@ -189,11 +189,14 @@ class WordOfTheDayPipeline:
         max_score: float = 4.0,
         limit: int = 15,
         shuffle: bool = False,
+        is_reusable_cb: Callable[[str], bool] | None = None,
     ) -> list[WordCandidate]:
         """
         Run the complete pipeline on the provided text corpus.
         """
         unique_words = self.clean_text(text)
+        if is_reusable_cb:
+            unique_words = {w for w in unique_words if is_reusable_cb(w)}
         scored_candidates = self.score_and_filter(
             unique_words, min_score=min_score, max_score=max_score
         )

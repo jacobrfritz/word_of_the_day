@@ -17,6 +17,7 @@ from .logger import get_logger
 from .storage import Storage, WordOfTheDayRecord
 from .config import settings
 from .scheduler import DailyScheduler
+from .utils import map_source_name
 
 logger = get_logger(__name__)
 
@@ -136,6 +137,7 @@ def get_word(
         except Exception as e:
             logger.error(f"Error auto-resolving definition for '{word}': {e}")
 
+    record["source"] = map_source_name(record["source"])
     return record
 
 
@@ -148,7 +150,10 @@ def get_history(
     """
     Returns historical Word of the Day selections, ordered by date descending.
     """
-    return storage.get_history(limit=limit)
+    records = storage.get_history(limit=limit)
+    for r in records:
+        r["source"] = map_source_name(r["source"])
+    return records
 
 
 @app.get("/", response_class=HTMLResponse)
