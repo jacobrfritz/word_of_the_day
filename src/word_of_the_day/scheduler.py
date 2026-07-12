@@ -40,11 +40,27 @@ class DailyScheduler:
         time.sleep(5)
         while not self._stop_event.is_set():
             try:
-                # Import run inside to avoid circular dependencies
-                from .main import run
+                import sys
+                import subprocess
 
-                logger.info("Running scheduled word selection...")
-                run(mode="auto")
+                logger.info("Running scheduled word selection in a subprocess...")
+                # Run the cli tool in a subprocess using the same python interpreter
+                result = subprocess.run(
+                    [sys.executable, "-m", "word_of_the_day.cli", "--mode", "auto"],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                logger.info("Scheduled word selection completed successfully.")
+                if result.stdout:
+                    logger.debug(f"Subprocess stdout:\n{result.stdout}")
+            except subprocess.CalledProcessError as e:
+                logger.error(
+                    f"Subprocess failed with exit code {e.returncode}.\n"
+                    f"Stdout: {e.stdout}\n"
+                    f"Stderr: {e.stderr}",
+                    exc_info=True,
+                )
             except Exception as e:
                 logger.error(f"Error in scheduled task: {e}", exc_info=True)
 

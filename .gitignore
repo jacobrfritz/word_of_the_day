@@ -219,3 +219,5 @@ logs/
 *.npz
 *.csv
 *.db
+*.db-shm
+*.db-wal
