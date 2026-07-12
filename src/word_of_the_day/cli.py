@@ -142,7 +142,7 @@ def parse_args(args: list[str]) -> argparse.Namespace:
         "--seed-csv",
         type=str,
         default=None,
-        help="Path to the seed words CSV file (default: 30_days_words.csv in root).",
+        help="Path to the seed words CSV file (default: word_of_the_day_embeddings.csv in root).",
     )
     parser.add_argument(
         "--cache-npz",
@@ -150,7 +150,7 @@ def parse_args(args: list[str]) -> argparse.Namespace:
         default=None,
         help=(
             "Path to the precomputed embeddings cache file "
-            "(default: 30_days_words_embeddings.npz)."
+            "(default: word_of_the_day_embeddings.npz)."
         ),
     )
     parser.add_argument(

@@ -1,152 +1,206 @@
-# word_of_the_day
+# Word of the Day Portal & Pipeline
 
-A robust default Python project template using `uv`.
+A comprehensive daily vocabulary generator, analytics pipeline, and portal dashboard. The application extracts word candidates from a variety of digital text sources, filters them using Zipf frequency metrics, ranks them using semantic embeddings against historical selections, and serves them via a FastAPI backend and a premium glassmorphic web dashboard.
 
-## Setup
+---
 
-This project uses `uv` for dependency management and includes a bootstrapping script to quickly get you started.
+## Features
 
-To bootstrap the project, run:
+- **Multi-Source Corpus Generation**: Fetches raw texts from Wikipedia, Project Gutenberg (by ID or random), the New York Times API, Quotable API, PoetryDB, and Substack publication feeds.
+- **Zipf Frequency Filtering**: Uses `wordfreq` to filter out words that are too common (e.g. conversational words) or too obscure (e.g. OCR noise, rare technical jargon).
+- **Semantic Embedding Similarity**: Employs `sentence-transformers` (`all-MiniLM-L6-v2` by default) to compare candidate embeddings against a seed database of past selections, maintaining a cohesive, sophisticated vocabulary flavor.
+- **FastAPI Backend Server**:
+  - `GET /`: Serves the glassmorphic analytics dashboard.
+  - `GET /api/word?date=YYYY-MM-DD`: Returns the selection for a date. Features a self-healing client that dynamically queries the Free Dictionary API for missing definitions or word origins on-demand.
+  - `GET /api/history?limit=N`: Fetches recent historical selections.
+- **Premium Glassmorphic UI**: Responsive dashboard with active word details, historical selection lookup, and a recent selections sidebar.
+- **Automated Background Scheduler**: A lightweight background daemon thread scheduler that triggers daily candidate selection at midnight America/Chicago (no OS `cron` or root permissions required).
+- **Hardened Web Security**: FastAPI backend configured with CORS, Gzip compression, and strict security headers (Content-Security-Policy, HSTS, X-Content-Type-Options, X-Frame-Options, Referrer-Policy).
+- **Container Readiness**: Built-in container healthcheck targeting a `/healthz` liveness/readiness database probe.
+- **Bootstrap Utilities**: Interactive script to fetch new words from podcast RSS feeds to update the baseline seed words.
 
+---
+
+## Setup & Installation
+
+This project uses `uv` for fast dependency and environment management.
+
+### Prerequisites
+
+Make sure you have [uv](https://github.com/astral-sh/uv) installed. If not, you can install it via:
 ```bash
-python bootstrap.py
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-The bootstrap script will:
-- **Check for `uv`**: Automatically installs [uv](https://github.com/astral-sh/uv) if it's not already on your system.
-- **Rename Project**: Guides you through renaming the project and its Python package from the default `word_of_the_day`.
-- **Sync Dependencies**: Installs project dependencies and allows you to select optional extras (e.g., `data`, `ml`, `api`).
-- **Reset Git**: Optionally clears the template's git history and initializes a new repository for your project.
+### Installation
 
-## Usage
+To sync all dependencies (including optional dev and api packages):
+```bash
+make install
+```
+*(This is equivalent to running `uv sync`)*
 
-Common development tasks can be run using either the `Makefile` (convenient for Unix-like environments and CI) or directly via `uv` (recommended on Windows or when you need to pass additional command-line arguments).
+### Environment Configuration
+
+Copy the sample environment file and configure variables as needed:
+```bash
+cp .env.example .env
+```
+
+Key environment configurations available in `.env`:
+- `NYT_API_KEY`: Required if using the New York Times connector.
+- `MIN_SCORE` & `MAX_SCORE`: Zipf frequency ranges (default: `2.3` to `4.0`).
+- `USE_EMBEDDINGS`: Toggle semantic embedding scoring (`True`/`False`).
+- `EMBEDDING_MODEL`: Hugging Face SentenceTransformer model name.
+- `SEED_CSV_PATH` / `CACHE_NPZ_PATH`: Paths to the baseline seed lists and precomputed embedding caches.
+
+---
+
+## Usage & Commands
+
+All development tasks are pre-configured in the `Makefile`.
+
+### CLI Executable
+
+Run the main application CLI via `uv`:
+```bash
+uv run word_of_the_day [options]
+```
+
+#### Operation Modes (`--mode`)
+
+1. **List Candidates (`list`)**
+   Finds and scores candidate words without saving them.
+   ```bash
+   uv run word_of_the_day --mode list --source wikipedia
+   ```
+
+2. **Automated Selection (`auto`)**
+   Executes the pipeline, selects the best candidate for a given date, and saves it in the database.
+   ```bash
+   uv run word_of_the_day --mode auto
+   ```
+
+3. **Interactive Selection (`interactive`)**
+   Presents candidates and allows you to manually select the word of the day.
+   ```bash
+   uv run word_of_the_day --mode interactive --source poetry_db
+   ```
+
+4. **Manual Assignment (`set`)**
+   Manually assigns a specific word to a date.
+   ```bash
+   uv run word_of_the_day --mode set --word "sagacious" --date 2026-07-12
+   ```
+
+5. **Start API Server (`api`)**
+   Starts the FastAPI portal server locally.
+   ```bash
+   uv run word_of_the_day --mode api
+   ```
 
 ### Development Commands
 
 | Task | Make Command | Direct `uv` Command | Description |
 | :--- | :--- | :--- | :--- |
-| **Sync Dependencies** | `make install` | `uv sync` | Install or sync project dependencies. |
-| **Run CLI** | `make run` | `uv run word_of_the_day` | Run the application command-line interface. |
-| **Run Tests** | `make test` | `uv run pytest` | Run the test suite. |
+| **Sync Dependencies** | `make install` | `uv sync` | Synchronize package dependencies. |
+| **Run Default CLI** | `make run` | `uv run word_of_the_day` | Runs the CLI app with defaults. |
+| **Run Tests** | `make test` | `uv run pytest` | Run the unit and integration test suite. |
 | **Watch Tests** | `make test-watch` | `uv run ptw` | Run tests in watch mode. |
-| **Coverage Report** | `make test-cov` | `uv run pytest --cov=src --cov-report=term-missing` | Run tests and generate coverage. |
-| **Lint Code** | `make lint` | `uv run ruff check .` | Check style and quality with Ruff. |
-| **Format Code** | `make format` | `uv run ruff format .` | Format code using Ruff. |
+| **Coverage Report** | `make test-cov` | `uv run pytest --cov=src ...` | Run tests and generate coverage. |
+| **Lint Code** | `make lint` | `uv run ruff check .` | Run style checks with Ruff. |
+| **Format Code** | `make format` | `uv run ruff format .` | Format codebase using Ruff. |
 | **Type Check** | `make typecheck` | `uv run mypy src` | Run static type analysis with mypy. |
 
-### Passing Arguments
+---
 
-One of the main advantages of running commands directly via `uv` is the ability to easily append any standard command-line arguments. For example:
+## Seed Data & Bootstrapping
 
-* **Run a specific test:**
-  ```bash
-  uv run pytest -k test_some_feature
-  ```
-* **Auto-fix lint issues:**
-  ```bash
-  uv run ruff check . --fix
-  ```
+The project contains historical seed words to compute semantic similarity:
+- `bootstrap.csv`: A pre-loaded list of 7,200+ Merriam-Webster Word of the Day selections.
+- `word_of_the_day_embeddings.npz`: Pre-calculated embeddings of seed words to speed up pipeline execution.
 
+To retrieve the latest words from the Merriam-Webster podcast RSS feed and update the seed file:
+```bash
+uv run python bootstrap_word_of_the_day.py
+```
+
+---
 
 ## Project Structure
 
 ```text
 .
-├── .editorconfig
-├── .gitignore
-├── .pre-commit-config.yaml
-├── Makefile
-├── README.md
-├── bootstrap.py
-├── pyproject.toml
-├── uv.lock
+├── Dockerfile                        # Multi-stage slim non-root Docker runtime config
+├── Makefile                          # Easy commands for local development
+├── README.md                         # Project documentation (this file)
+├── bootstrap.csv                     # Historical Merriam-Webster selections
+├── bootstrap_word_of_the_day.py      # Script to sync new words from RSS feeds
+├── docker-compose.yml                # Compose service for the API and volume mounts
+├── pyproject.toml                    # UV project configuration and dependencies
+├── word_of_the_day.db                # SQLite database (history & seeds)
+├── word_of_the_day_embeddings.npz    # Precomputed embeddings cache file
 ├── src/
 │   └── word_of_the_day/
-│       ├── __init__.py
-│       ├── cli.py
-│       └── main.py
-└── tests/
-    ├── __init__.py
-    └── test_main.py
+│       ├── connectors/               # Source connectors (WP, Gutenberg, NYT, etc.)
+│       ├── static/                   # Dashboard web assets (HTML, JS, CSS)
+│       ├── utils/                    # Common text helpers
+│       ├── api.py                    # FastAPI server endpoints
+│       ├── cli.py                    # CLI arg parser
+│       ├── config.py                 # Pydantic Settings configuration
+│       ├── dictionary.py             # HTTPX-based Dictionary API validator/fetcher
+│       ├── generator.py              # Candidate parser from source texts
+│       ├── logger.py                 # Rotational logging setup
+│       ├── main.py                   # CLI orchestrator and configuration loaders
+│       ├── pipeline.py               # Candidate scoring and pipeline orchestration
+│       ├── scheduler.py              # Background daemon thread scheduler
+│       ├── scorers.py                # Zipf frequency and Embedding scorers
+│       └── storage.py                # SQLite database manager (WAL and busy-timeout enabled)
+└── tests/                            # Comprehensive testing suite (154 tests)
 ```
 
-- `src/`: Core application logic.
-- `tests/`: Project tests.
-- `pyproject.toml`: Project metadata and dependencies.
-- `bootstrap.py`: Interactive setup script.
-- `Makefile`: Shortcuts for common tasks.
+---
 
+## Container Deployment
 
-## Docker Support
-
-This project can be fully containerized using Docker and Docker Compose. The Docker image uses a multi-stage build powered by `uv` for fast dependency installation and minimal final image size. It also pre-downloads the default Hugging Face SentenceTransformer model (`all-MiniLM-L6-v2`) to ensure offline compatibility.
-
-### Daily Word Generation Cron Job
-
-When running in containerized mode (e.g. via Docker or Docker Compose), a system cron daemon is automatically installed and configured to run the auto-selection pipeline (`word_of_the_day --mode auto`) once daily at midnight Central Time (`America/Chicago`).
-
-- **Timezone**: The container's timezone is set to `America/Chicago` to guarantee accurate timezone-relative daily runs.
-- **Logging**: The cron execution logs are routed directly back to the container's stdout/stderr, so you can inspect daily runs via standard container logs (e.g., `docker logs` or `docker compose logs`).
-
-### Building the Image
-
-Build the Docker image locally:
-
-```bash
-docker build -t word-of-the-day .
-```
+The application is containerized with production-grade security defaults:
+- **Non-Root User**: The container runs under `appuser` (UID `10001`), ensuring compatibility with strict container security policies (e.g., Kubernetes root restrictions).
+- **Health Checks**: A liveness/readiness probe checks `/healthz` on a 30s interval.
 
 ### Running with Docker Compose (Recommended)
 
-Running via Docker Compose is the easiest way to start the FastAPI server and keep your data persisted.
+Starts the FastAPI server and keeps your SQLite database and logs persisted:
 
-1. Start the API server in background mode:
-   ```bash
-   docker compose up -d
-   ```
-   The FastAPI server will be available at `http://localhost:8000`.
-
-2. Stop the API server:
-   ```bash
-   docker compose down
-   ```
+```bash
+docker compose up -d
+```
+The portal will be available at [http://localhost:8000](http://localhost:8000).
 
 ### Running with Docker CLI
 
-You can also run the container directly using the `docker` command.
+1. **Build the Image**
+   ```bash
+   docker build -t word-of-the-day .
+   ```
 
-#### Run the API Server (Default)
+2. **Run the API Server**
+   ```bash
+   docker run -d \
+     -p 8000:8000 \
+     --name wotd-api \
+     -v $(pwd)/word_of_the_day.db:/app/word_of_the_day.db \
+     -v $(pwd)/logs:/app/logs \
+     --env-file .env \
+     word-of-the-day
+   ```
 
-```bash
-docker run -d \
-  -p 8000:8000 \
-  --name wotd-api \
-  -v $(pwd)/word_of_the_day.db:/app/word_of_the_day.db \
-  -v $(pwd)/logs:/app/logs \
-  --env-file .env \
-  word-of-the-day
-```
+3. **Run One-off CLI Pipeline Modes**
+   ```bash
+   # List candidates
+   docker run --rm word-of-the-day --mode list
 
-#### Run CLI Commands
-
-You can run CLI commands by overriding the default command:
-
-```bash
-# List word candidates from all sources
-docker run --rm word-of-the-day --mode list
-
-# Automatically select the word of the day
-docker run --rm \
-  -v $(pwd)/word_of_the_day.db:/app/word_of_the_day.db \
-  word-of-the-day --mode auto
-```
-
-#### Run Tests Inside the Container
-
-To verify the test suite runs correctly inside the container:
-
-```bash
-docker run --rm --entrypoint pytest word-of-the-day
-```
-
+   # Auto-select today\'s word
+   docker run --rm \
+     -v $(pwd)/word_of_the_day.db:/app/word_of_the_day.db \
+     word-of-the-day --mode auto
+   ```

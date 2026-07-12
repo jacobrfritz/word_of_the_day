@@ -24,6 +24,7 @@ class WordCandidate:
     zipf_score: float
     definition: str
     score: float | None = None
+    origin: str | None = None
 
 
 class WordOfTheDayPipeline:
@@ -155,7 +156,7 @@ class WordOfTheDayPipeline:
         for word, score in scored_candidates:
             if len(validated_candidates) >= limit:
                 break
-            is_valid, info = self.dictionary_client.get_word_definition(word)
+            is_valid, info, origin = self.dictionary_client.get_word_definition(word)
             if is_valid:
                 # If using standard ZipfScorer, the score *is* the zipf score.
                 # Otherwise (e.g. EmbeddingScorer), we fetch the real Zipf score
@@ -173,6 +174,7 @@ class WordOfTheDayPipeline:
                         zipf_score=zipf_val,
                         definition=info,
                         score=custom_score,
+                        origin=origin,
                     )
                 )
             else:

@@ -110,14 +110,14 @@ def test_pipeline_validate_candidates() -> None:
     # "rareword1" is valid
     # "rareword2" is invalid (not a valid English word)
     # "rareword3" is valid
-    def get_def_mock(word: str) -> tuple[bool, str]:
+    def get_def_mock(word: str) -> tuple[bool, str, str | None]:
         if word == "rareword1":
-            return True, "(noun) definition 1"
+            return True, "(noun) definition 1", "origin 1"
         if word == "rareword2":
-            return False, "Not a valid English word."
+            return False, "Not a valid English word.", None
         if word == "rareword3":
-            return True, "(verb) definition 3"
-        return False, "Not found"
+            return True, "(verb) definition 3", None
+        return False, "Not found", None
 
     mock_dict_client.get_word_definition.side_effect = get_def_mock
 
@@ -135,7 +135,10 @@ def test_pipeline_validate_candidates() -> None:
     results_limit_1 = pipeline.validate_candidates(candidates, limit=1)
     assert len(results_limit_1) == 1
     assert results_limit_1[0] == WordCandidate(
-        word="rareword1", zipf_score=2.5, definition="(noun) definition 1"
+        word="rareword1",
+        zipf_score=2.5,
+        definition="(noun) definition 1",
+        origin="origin 1",
     )
 
     # Validate candidates (limit=3)
@@ -149,7 +152,11 @@ def test_pipeline_validate_candidates() -> None:
 def test_pipeline_find_candidates_full_run() -> None:
     """Verifies the complete find_candidates flow runs successfully."""
     mock_dict_client = MagicMock(spec=DictionaryClient)
-    mock_dict_client.get_word_definition.return_value = (True, "(noun) test definition")
+    mock_dict_client.get_word_definition.return_value = (
+        True,
+        "(noun) test definition",
+        "test origin",
+    )
 
     pipeline = WordOfTheDayPipeline(
         stop_words={"the", "and"}, dictionary_client=mock_dict_client
@@ -193,14 +200,14 @@ def test_pipeline_validate_candidates_skips_invalid_to_fulfill_limit() -> None:
     """
     mock_dict_client = MagicMock(spec=DictionaryClient)
 
-    def get_def_mock(word: str) -> tuple[bool, str]:
+    def get_def_mock(word: str) -> tuple[bool, str, str | None]:
         if word == "rareword1":
-            return True, "definition 1"
+            return True, "definition 1", "origin 1"
         if word == "rareword2":
-            return False, "Not a valid English word."
+            return False, "Not a valid English word.", None
         if word == "rareword3":
-            return True, "definition 3"
-        return False, "Not found"
+            return True, "definition 3", None
+        return False, "Not found", None
 
     mock_dict_client.get_word_definition.side_effect = get_def_mock
 
@@ -239,7 +246,11 @@ def test_pipeline_with_custom_scorer() -> None:
     # "solitude" (8), "serendipity" (11)
     # Both are within default Zipf range (2.3 < score <= 4.0)
     mock_dict_client = MagicMock(spec=DictionaryClient)
-    mock_dict_client.get_word_definition.return_value = (True, "mock definition")
+    mock_dict_client.get_word_definition.return_value = (
+        True,
+        "mock definition",
+        "mock origin",
+    )
 
     pipeline = WordOfTheDayPipeline(
         stop_words=set(),

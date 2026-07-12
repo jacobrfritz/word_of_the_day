@@ -5,6 +5,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from .logger import get_logger, setup_logging
+from .config import settings
 
 logger = get_logger(__name__)
 
@@ -36,51 +37,49 @@ def run(
     """
     load_dotenv()
 
-    # Load parameters from environment variables where applicable
-    min_score = float(os.environ.get("MIN_SCORE", min_score))
-    max_score = float(os.environ.get("MAX_SCORE", max_score))
-    limit = int(os.environ.get("LIMIT", limit))
-    substack_category = os.environ.get("SUBSTACK_CATEGORY", substack_category)
-    substack_limit_pubs = int(
-        os.environ.get("SUBSTACK_LIMIT_PUBS", substack_limit_pubs)
-    )
-    substack_limit_posts = int(
-        os.environ.get("SUBSTACK_LIMIT_POSTS", substack_limit_posts)
-    )
-
-    env_use_embeddings = os.environ.get("USE_EMBEDDINGS")
-    if env_use_embeddings is not None:
-        use_embeddings = env_use_embeddings.lower() in ("true", "1", "yes")
-
-    embedding_model = os.environ.get("EMBEDDING_MODEL", embedding_model)
-    embedding_k = int(os.environ.get("EMBEDDING_K", embedding_k))
-    seed_csv_path = seed_csv_path or os.environ.get("SEED_CSV_PATH")
-    cache_npz_path = cache_npz_path or os.environ.get("CACHE_NPZ_PATH")
+    # Load parameters from Pydantic config settings (which loads from environment / .env)
+    # CLI arguments override settings if they are not the defaults.
+    if min_score == 2.3:
+        min_score = settings.min_score
+    if max_score == 4.0:
+        max_score = settings.max_score
+    if limit == 3:
+        limit = settings.limit
+    if substack_category == "philosophy":
+        substack_category = settings.substack_category
+    if substack_limit_pubs == 3:
+        substack_limit_pubs = settings.substack_limit_pubs
+    if substack_limit_posts == 3:
+        substack_limit_posts = settings.substack_limit_posts
+    if use_embeddings is True:
+        use_embeddings = settings.use_embeddings
+    if embedding_model == "all-MiniLM-L6-v2":
+        embedding_model = settings.embedding_model
+    if embedding_k == 5:
+        embedding_k = settings.embedding_k
+    if seed_csv_path is None:
+        seed_csv_path = settings.seed_csv_path
+    if cache_npz_path is None:
+        cache_npz_path = settings.cache_npz_path
+    if db_path is None:
+        db_path = settings.db_path
 
     # Configure logging: console logs at INFO level, file logs at DEBUG level
-    log_file = Path(os.environ.get("LOG_FILE", "logs/app.log"))
+    log_file = Path(settings.log_file)
 
-    def get_log_level(env_name: str, default: int) -> int:
-        val = os.environ.get(env_name)
-        if not val:
-            return default
+    def resolve_level(level_str: str, default: int) -> int:
         try:
-            level = getattr(logging, val.upper())
+            level = getattr(logging, level_str.upper())
             if isinstance(level, int):
                 return level
             return int(level)
         except (AttributeError, ValueError, TypeError):
-            try:
-                return int(val)
-            except ValueError:
-                return default
+            return default
 
-    console_level = get_log_level(
-        "LOG_LEVEL_CONSOLE", get_log_level("LOG_LEVEL", logging.INFO)
-    )
-    file_level = get_log_level("LOG_LEVEL_FILE", logging.DEBUG)
-    max_bytes = int(os.environ.get("LOG_MAX_BYTES", 10 * 1024 * 1024))
-    backup_count = int(os.environ.get("LOG_BACKUP_COUNT", 5))
+    console_level = resolve_level(settings.log_level_console, resolve_level(settings.log_level, logging.INFO))
+    file_level = resolve_level(settings.log_level_file, logging.DEBUG)
+    max_bytes = settings.log_max_bytes
+    backup_count = settings.log_backup_count
 
     setup_logging(
         log_file=log_file,
@@ -116,8 +115,8 @@ def run(
 
         from .api import app
 
-        host = os.environ.get("API_HOST", "127.0.0.1")
-        port = int(os.environ.get("API_PORT", "8000"))
+        host = settings.api_host
+        port = settings.api_port
         logger.info(f"Starting API server on {host}:{port}...")
         uvicorn.run(app, host=host, port=port)
         return
@@ -133,7 +132,7 @@ def run(
 
         logger.info(f"Manually setting Word of the Day for {date}: '{word}'")
         with DictionaryClient() as dict_client:
-            is_valid, definition = dict_client.get_word_definition(word)
+            is_valid, definition, origin = dict_client.get_word_definition(word)
             if not is_valid:
                 logger.warning(f"Word validation warning: {definition}")
                 # Save anyway but warn
@@ -153,6 +152,7 @@ def run(
                 source="Manual Set",
                 score=score_val,
                 extra_info={"manual": True},
+                origin=origin,
             )
             logger.info(
                 f"Successfully saved '{word.upper()}' as Word of the Day for {date}."
@@ -287,8 +287,8 @@ def run(
 
     scorer: WordScorer = ZipfScorer()
     if use_embeddings:
-        csv_path = seed_csv_path or "30_days_words.csv"
-        cache_path = cache_npz_path or "30_days_words_embeddings.npz"
+        csv_path = seed_csv_path or "word_of_the_day_embeddings.csv"
+        cache_path = cache_npz_path or "word_of_the_day_embeddings.npz"
         logger.info(
             f"Initializing EmbeddingScorer with seed={csv_path}, cache={cache_path}"
         )
@@ -371,8 +371,7 @@ def run(
                             )
                         else:
                             score_str = (
-                                f"Embedding Sim: {cand_score}, "
-                                f"Zipf Score: {zipf:.2f}"
+                                f"Embedding Sim: {cand_score}, Zipf Score: {zipf:.2f}"
                             )
 
                     try:
@@ -440,6 +439,7 @@ def run(
                 source=src,
                 score=chosen.score if chosen.score is not None else chosen.zipf_score,
                 extra_info={"zipf_score": chosen.zipf_score, "auto": True},
+                origin=chosen.origin,
             )
             print(f"\n🎉 Selected Word of the Day for {date}: {chosen.word.upper()}")
             print(f"Definition: {chosen.definition}")
@@ -490,6 +490,7 @@ def run(
                             "zipf_score": chosen.zipf_score,
                             "interactive": True,
                         },
+                        origin=chosen.origin,
                     )
                     print(
                         f"\n🎉 Saved Word of the Day for {date}: {chosen.word.upper()}"

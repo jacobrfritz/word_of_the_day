@@ -2,10 +2,13 @@
 import csv
 import json
 import sqlite3
+from contextlib import contextmanager
+from collections.abc import Generator
 from pathlib import Path
 from typing import Any, TypedDict
 
 from .logger import get_logger
+from .config import settings
 
 logger = get_logger(__name__)
 
@@ -17,6 +20,7 @@ class WordOfTheDayRecord(TypedDict):
     source: str
     score: float | None
     extra_info: dict[str, Any] | None
+    origin: str | None
 
 
 class Storage:
@@ -29,11 +33,14 @@ class Storage:
         self, db_path: str | Path | None = None, bootstrap: bool = True
     ) -> None:
         if db_path is None:
-            # Default database location is word_of_the_day.db in the project root.
-            # This file is located at src/word_of_the_day/storage.py.
-            # Project root is 3 levels up.
-            project_root = Path(__file__).resolve().parent.parent.parent
-            self.db_path = project_root / "word_of_the_day.db"
+            if settings.db_path:
+                self.db_path = Path(settings.db_path)
+            else:
+                # Default database location is word_of_the_day.db in the project root.
+                # This file is located at src/word_of_the_day/storage.py.
+                # Project root is 3 levels up.
+                project_root = Path(__file__).resolve().parent.parent.parent
+                self.db_path = project_root / "word_of_the_day.db"
         else:
             self.db_path = Path(db_path)
 
@@ -41,10 +48,21 @@ class Storage:
         if bootstrap:
             self._bootstrap_from_csv()
 
+    @contextmanager
+    def _connect(self) -> Generator[sqlite3.Connection, None, None]:
+        """Provides a thread-safe connection running in WAL mode with a busy timeout."""
+        conn = sqlite3.connect(self.db_path)
+        try:
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.execute("PRAGMA busy_timeout=5000;")
+            yield conn
+        finally:
+            conn.close()
+
     def _init_db(self) -> None:
         """Initializes database schema if it doesn't already exist."""
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS wotd_history (
@@ -53,10 +71,18 @@ class Storage:
                     definition TEXT,
                     source TEXT,
                     score REAL,
-                    extra_info TEXT
+                    extra_info TEXT,
+                    origin TEXT
                 )
                 """
             )
+            # Check if origin column exists in wotd_history for migration
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(wotd_history)")
+            columns = [col[1] for col in cursor.fetchall()]
+            if "origin" not in columns:
+                conn.execute("ALTER TABLE wotd_history ADD COLUMN origin TEXT")
+
             # Create indexes for efficient querying
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_wotd_history_word ON wotd_history(word)"
@@ -77,9 +103,7 @@ class Storage:
 
             # One-time migration: delete old bootstrapped words from wotd_history
             cursor = conn.cursor()
-            cursor.execute(
-                "DELETE FROM wotd_history WHERE source = 'Bootstrap CSV'"
-            )
+            cursor.execute("DELETE FROM wotd_history WHERE source = 'Bootstrap CSV'")
             if cursor.rowcount > 0:
                 logger.info(
                     f"Cleaned up {cursor.rowcount} bootstrapped records from wotd_history."
@@ -89,11 +113,11 @@ class Storage:
 
     def _bootstrap_from_csv(self) -> None:
         """
-        Seeds the database seed_words table from bootstrap.csv or 30_days_words.csv
+        Seeds the database seed_words table from bootstrap.csv or word_of_the_day_embeddings.csv
         if the table is currently empty.
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._connect() as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT COUNT(*) FROM seed_words")
                 count: int = cursor.fetchone()[0]
@@ -107,7 +131,7 @@ class Storage:
         project_root = Path(__file__).resolve().parent.parent.parent
         bootstrap_csv = project_root / "bootstrap.csv"
         if not bootstrap_csv.exists():
-            bootstrap_csv = project_root / "30_days_words.csv"
+            bootstrap_csv = project_root / "word_of_the_day_embeddings.csv"
 
         if not bootstrap_csv.exists():
             logger.info("No seed CSV files found. Database started empty.")
@@ -134,7 +158,7 @@ class Storage:
 
         if records:
             try:
-                with sqlite3.connect(self.db_path) as conn:
+                with self._connect() as conn:
                     conn.executemany(
                         """
                         INSERT OR IGNORE INTO seed_words (date, word)
@@ -165,7 +189,7 @@ class Storage:
         cleaned_word = word.strip().lower()
         # SQL window check:
         # date >= date(reference_date, '-365 days') AND date <= reference_date
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 """
@@ -192,26 +216,28 @@ class Storage:
         source: str,
         score: float | None,
         extra_info: dict[str, Any] | None = None,
+        origin: str | None = None,
     ) -> None:
         """
         Saves or updates the Word of the Day selection for a specific date.
         """
         cleaned_word = word.strip().lower()
         extra_info_str = json.dumps(extra_info) if extra_info is not None else None
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.execute(
                 """
                 INSERT INTO wotd_history
-                (date, word, definition, source, score, extra_info)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (date, word, definition, source, score, extra_info, origin)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(date) DO UPDATE SET
                     word = excluded.word,
                     definition = excluded.definition,
                     source = excluded.source,
                     score = excluded.score,
-                    extra_info = excluded.extra_info
+                    extra_info = excluded.extra_info,
+                    origin = excluded.origin
                 """,
-                (date, cleaned_word, definition, source, score, extra_info_str),
+                (date, cleaned_word, definition, source, score, extra_info_str, origin),
             )
             conn.commit()
 
@@ -219,12 +245,12 @@ class Storage:
         """
         Retrieves the Word of the Day record for a given date.
         """
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT date, word, definition, source, score, extra_info
+                SELECT date, word, definition, source, score, extra_info, origin
                 FROM wotd_history WHERE date = ?
                 """,
                 (date,),
@@ -244,6 +270,7 @@ class Storage:
                     "source": row["source"],
                     "score": row["score"],
                     "extra_info": extra_info,
+                    "origin": row["origin"],
                 }
             return None
 
@@ -252,12 +279,12 @@ class Storage:
         Retrieves historical Word of the Day selections ordered by date descending.
         """
         limit_clause = f"LIMIT {limit}" if limit is not None else ""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute(
                 f"""
-                SELECT date, word, definition, source, score, extra_info
+                SELECT date, word, definition, source, score, extra_info, origin
                 FROM wotd_history ORDER BY date DESC {limit_clause}
                 """
             )
@@ -278,6 +305,7 @@ class Storage:
                         "source": row["source"],
                         "score": row["score"],
                         "extra_info": extra_info,
+                        "origin": row["origin"],
                     }
                 )
             return history

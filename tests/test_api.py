@@ -57,6 +57,7 @@ def test_get_word_success(client: TestClient, temp_storage: Storage) -> None:
         definition="happy chance",
         source="wikipedia",
         score=3.5,
+        origin="test origin",
     )
 
     response = client.get("/api/word?date=2026-07-10")
@@ -67,6 +68,7 @@ def test_get_word_success(client: TestClient, temp_storage: Storage) -> None:
     assert data["definition"] == "happy chance"
     assert data["source"] == "wikipedia"
     assert data["score"] == 3.5
+    assert data["origin"] == "test origin"
 
 
 def test_get_history(client: TestClient, temp_storage: Storage) -> None:
@@ -99,3 +101,42 @@ def test_serve_html_index(client: TestClient) -> None:
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert "Word of the Day Portal" in response.text
+
+
+def test_serve_static_files(client: TestClient) -> None:
+    # Verify static files are mounted and served
+    response_css = client.get("/static/style.css")
+    assert response_css.status_code == 200
+    assert "text/css" in response_css.headers["content-type"]
+    assert "Design System & Variables" in response_css.text
+
+    response_js = client.get("/static/index.js")
+    assert response_js.status_code == 200
+    assert "getLocalDateString" in response_js.text
+
+
+def test_health_check(client: TestClient, temp_storage: Storage) -> None:
+    # Verify health check endpoint succeeds
+    response = client.get("/healthz")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "healthy"
+    assert data["database"] == "connected"
+
+
+def test_security_headers(client: TestClient) -> None:
+    # Verify security headers are present
+    response = client.get("/")
+    assert response.headers.get("x-content-type-options") == "nosniff"
+    assert response.headers.get("x-frame-options") == "DENY"
+    assert response.headers.get("x-xss-protection") == "1; mode=block"
+    assert "default-src 'self'" in response.headers.get("content-security-policy", "")
+    assert response.headers.get("referrer-policy") == "strict-origin-when-cross-origin"
+
+
+def test_cors_headers(client: TestClient) -> None:
+    # Verify CORS headers are present on API requests
+    response = client.options("/api/word", headers={"origin": "http://example.com", "access-control-request-method": "GET"})
+    assert response.headers.get("access-control-allow-origin") == "http://example.com"
+
+

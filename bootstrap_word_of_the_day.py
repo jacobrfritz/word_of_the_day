@@ -13,7 +13,7 @@ except ImportError:
 from bs4 import BeautifulSoup
 
 
-def fetch_new_words(filename="30_days_words.csv"):
+def fetch_new_words(filename="word_of_the_day_embeddings.csv"):
     """Fetches new Word of the Day entries from the podcast RSS feed,
 
     stopping when it encounters entries that are already in the existing CSV.
@@ -96,7 +96,7 @@ def fetch_new_words(filename="30_days_words.csv"):
         return existing_rows
 
 
-def save_to_csv(data, filename="30_days_words.csv"):
+def save_to_csv(data, filename="word_of_the_day_embeddings.csv"):
     keys = ["word", "date"]
     with open(filename, "w", newline="", encoding="utf-8") as output_file:
         dict_writer = csv.DictWriter(output_file, fieldnames=keys)

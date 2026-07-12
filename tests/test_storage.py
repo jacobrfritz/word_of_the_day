@@ -40,6 +40,7 @@ def test_save_and_retrieve_word(temp_db: Path) -> None:
         source="wikipedia",
         score=3.5,
         extra_info={"zipf": 3.5},
+        origin="Arabic/Persian",
     )
 
     record = storage.get_word_of_the_day("2026-07-10")
@@ -50,6 +51,7 @@ def test_save_and_retrieve_word(temp_db: Path) -> None:
     assert record["source"] == "wikipedia"
     assert record["score"] == 3.5
     assert record["extra_info"] == {"zipf": 3.5}
+    assert record["origin"] == "Arabic/Persian"
 
     # Verify UPSERT logic
     storage.save_word_of_the_day(
@@ -150,6 +152,7 @@ def test_db_bootstrap_seeding(temp_db: Path) -> None:
 
     # We should have seed words loaded in the seed_words table
     import sqlite3
+
     with sqlite3.connect(temp_db) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM seed_words")
@@ -161,6 +164,7 @@ def test_db_migration_cleanup(temp_db: Path) -> None:
     # 1. Initialize empty DB and insert mock records representing old state
     storage1 = Storage(db_path=temp_db, bootstrap=False)
     import sqlite3
+
     with sqlite3.connect(temp_db) as conn:
         conn.execute(
             """
@@ -188,3 +192,39 @@ def test_db_migration_cleanup(temp_db: Path) -> None:
     assert history[0]["word"] == "banana"
     assert history[0]["source"] == "wikipedia"
 
+
+def test_db_migration_adds_origin_column(temp_db: Path) -> None:
+    # 1. Create table without origin column manually
+    import sqlite3
+
+    with sqlite3.connect(temp_db) as conn:
+        conn.execute(
+            """
+            CREATE TABLE wotd_history (
+                date TEXT PRIMARY KEY,
+                word TEXT NOT NULL,
+                definition TEXT,
+                source TEXT,
+                score REAL,
+                extra_info TEXT
+            )
+            """
+        )
+        conn.commit()
+
+    # Verify column does not exist
+    with sqlite3.connect(temp_db) as conn:
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(wotd_history)")
+        columns = [col[1] for col in cursor.fetchall()]
+        assert "origin" not in columns
+
+    # 2. Initialize Storage which should trigger migration
+    _storage = Storage(db_path=temp_db, bootstrap=False)
+
+    # 3. Verify origin column was added
+    with sqlite3.connect(temp_db) as conn:
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(wotd_history)")
+        columns = [col[1] for col in cursor.fetchall()]
+        assert "origin" in columns
