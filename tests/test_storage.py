@@ -252,3 +252,81 @@ def test_get_used_words(temp_db: Path) -> None:
     very_recent = storage.get_used_words(days_threshold=2, reference_date="2026-07-10")
     assert very_recent == {"cherry"}
 
+
+def test_db_migration_adds_cluster_id_column(temp_db: Path) -> None:
+    # 1. Create table without cluster_id manually
+    import sqlite3
+
+    with sqlite3.connect(temp_db) as conn:
+        conn.execute(
+            """
+            CREATE TABLE wotd_history (
+                date TEXT PRIMARY KEY,
+                word TEXT NOT NULL,
+                definition TEXT,
+                source TEXT,
+                score REAL,
+                extra_info TEXT,
+                origin TEXT
+            )
+            """
+        )
+        conn.commit()
+
+    # Verify column does not exist
+    with sqlite3.connect(temp_db) as conn:
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(wotd_history)")
+        columns = [col[1] for col in cursor.fetchall()]
+        assert "cluster_id" not in columns
+
+    # 2. Initialize Storage which should trigger migration
+    _storage = Storage(db_path=temp_db, bootstrap=False)
+
+    # 3. Verify cluster_id column was added
+    with sqlite3.connect(temp_db) as conn:
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(wotd_history)")
+        columns = [col[1] for col in cursor.fetchall()]
+        assert "cluster_id" in columns
+
+
+def test_cluster_id_save_retrieve_and_rotation(temp_db: Path) -> None:
+    storage = Storage(db_path=temp_db, bootstrap=False)
+
+    # 1. Initial rotation should start at 0
+    assert storage.get_last_used_cluster_id() is None
+    assert storage.get_next_cluster_id(optimal_k=5) == 0
+
+    # 2. Save WOTD with a cluster_id
+    storage.save_word_of_the_day(
+        date="2026-07-10",
+        word="serendipity",
+        definition="happy chance",
+        source="wikipedia",
+        score=3.5,
+        cluster_id=2,
+    )
+
+    record = storage.get_word_of_the_day("2026-07-10")
+    assert record is not None
+    assert record["cluster_id"] == 2
+
+    # 3. Rotate to next ID (2 + 1 = 3)
+    assert storage.get_last_used_cluster_id() == 2
+    assert storage.get_next_cluster_id(optimal_k=5) == 3
+
+    # 4. Save another word on a later date to verify rotation sequence update
+    storage.save_word_of_the_day(
+        date="2026-07-11",
+        word="solitude",
+        definition="alone",
+        source="nyt",
+        score=4.0,
+        cluster_id=4,
+    )
+    assert storage.get_last_used_cluster_id() == 4
+    # With optimal_k=5, 4 + 1 wraps around to 0
+    assert storage.get_next_cluster_id(optimal_k=5) == 0
+
+

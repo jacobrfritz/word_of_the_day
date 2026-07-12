@@ -92,6 +92,8 @@ class EmbeddingScorer:
         self.seed_embeddings: np.ndarray = np.empty((0, 0))
         self.normalized_seeds: np.ndarray = np.empty((0, 0))
         self.model: SentenceTransformer | None = None
+        self.target_centroid: np.ndarray | None = None
+        self.target_centroid_normalized: np.ndarray | None = None
 
         self._initialize()
 
@@ -194,8 +196,9 @@ class EmbeddingScorer:
 
     def score(self, word: str) -> float:
         """
-        Scores a candidate word using the mean cosine similarity of its
-        K-Nearest Neighbors in the seed set.
+        Scores a candidate word. If target_centroid is set, scores using cosine
+        similarity to the target centroid. Otherwise, uses the mean cosine
+        similarity of its K-Nearest Neighbors in the seed set.
         """
         if not self.seed_words:
             return 0.0
@@ -220,6 +223,11 @@ class EmbeddingScorer:
             return 0.0
         cand_norm = candidate_vector / cand_norm_val
 
+        # If target centroid is set, compute cosine similarity directly to it
+        if self.target_centroid_normalized is not None:
+            similarity = np.dot(self.target_centroid_normalized, cand_norm)
+            return float(similarity)
+
         # Vectorized cosine similarities via dot product
         similarities = np.dot(self.normalized_seeds, cand_norm)
 
@@ -233,6 +241,82 @@ class EmbeddingScorer:
 
         # Return mean similarity
         return float(np.mean(top_k_sims))
+
+    def set_target_centroid(self, centroid: "np.ndarray | None") -> None:
+        """
+        Sets the active target centroid for scoring candidates.
+        """
+        import numpy as np
+        self.target_centroid = centroid
+        if centroid is not None:
+            norm = np.linalg.norm(centroid)
+            self.target_centroid_normalized = centroid / (norm if norm > 0 else 1.0)
+        else:
+            self.target_centroid_normalized = None
+
+    def get_optimal_seed_clusters(self, k_min: int = 2, k_max: int = 10) -> tuple["np.ndarray", int]:
+        """
+        Finds the optimal number of clusters using the Elbow Method (diminishing returns)
+        and returns the sorted centroids.
+        """
+        try:
+            from sklearn.cluster import KMeans
+            import numpy as np
+        except ImportError as e:
+            raise ImportError(
+                "Clustering requires 'scikit-learn' and 'numpy'. "
+                "Please install them using: uv pip install scikit-learn numpy"
+            ) from e
+
+        seed_embeddings = self.seed_embeddings
+        if len(seed_embeddings) == 0 or seed_embeddings.shape[0] == 0:
+            raise ValueError("No seed embeddings available for clustering.")
+
+        inertias = []
+        # Ensure we don't try to find more clusters than we have seed words
+        max_possible_k = min(k_max, len(seed_embeddings) - 1)
+        K_range = range(k_min, max_possible_k + 1)
+
+        # Handle case where K_range is empty (very few seed words)
+        if not K_range:
+            optimal_k = max(1, len(seed_embeddings))
+            kmeans = KMeans(n_clusters=optimal_k, random_state=42, n_init="auto")
+            kmeans.fit(seed_embeddings)
+            centroids = kmeans.cluster_centers_
+            sorted_indices = np.argsort(np.linalg.norm(centroids, axis=1))
+            return centroids[sorted_indices], optimal_k
+
+        # 1. Calculate inertia for each K
+        for k in K_range:
+            kmeans = KMeans(n_clusters=k, random_state=42, n_init="auto")
+            kmeans.fit(seed_embeddings)
+            inertias.append(kmeans.inertia_)
+
+        # 2. Automate finding the "Elbow" (max distance from the line connecting endpoints)
+        x1, y1 = K_range[0], inertias[0]
+        x2, y2 = K_range[-1], inertias[-1]
+
+        distances = []
+        for i, k in enumerate(K_range):
+            x3, y3 = k, inertias[i]
+            # Orthogonal distance from point (x3, y3) to line connecting (x1, y1) and (x2, y2)
+            numerator = np.abs((y2 - y1) * x3 - (x2 - x1) * y3 + x2 * y1 - x1 * y2)
+            denominator = np.sqrt((y2 - y1) ** 2 + (x2 - x1) ** 2)
+            dist = numerator / denominator if denominator > 0 else 0.0
+            distances.append(dist)
+
+        optimal_k = K_range[np.argmax(distances)]
+
+        # 3. Perform final clustering with optimal K
+        final_kmeans = KMeans(n_clusters=optimal_k, random_state=42, n_init="auto")
+        final_kmeans.fit(seed_embeddings)
+        centroids = final_kmeans.cluster_centers_
+
+        # 4. Sort centroids deterministically by vector norm
+        sorted_indices = np.argsort(np.linalg.norm(centroids, axis=1))
+        stable_centroids = centroids[sorted_indices]
+
+        return stable_centroids, optimal_k
 
 
 class CompositeScorer:

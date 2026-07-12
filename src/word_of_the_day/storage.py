@@ -21,6 +21,7 @@ class WordOfTheDayRecord(TypedDict):
     score: float | None
     extra_info: dict[str, Any] | None
     origin: str | None
+    cluster_id: int | None
 
 
 class Storage:
@@ -72,16 +73,19 @@ class Storage:
                     source TEXT,
                     score REAL,
                     extra_info TEXT,
-                    origin TEXT
+                    origin TEXT,
+                    cluster_id INTEGER
                 )
                 """
             )
-            # Check if origin column exists in wotd_history for migration
+            # Check if origin and cluster_id columns exist in wotd_history for migration
             cursor = conn.cursor()
             cursor.execute("PRAGMA table_info(wotd_history)")
             columns = [col[1] for col in cursor.fetchall()]
             if "origin" not in columns:
                 conn.execute("ALTER TABLE wotd_history ADD COLUMN origin TEXT")
+            if "cluster_id" not in columns:
+                conn.execute("ALTER TABLE wotd_history ADD COLUMN cluster_id INTEGER")
 
             # Create indexes for efficient querying
             conn.execute(
@@ -301,6 +305,7 @@ class Storage:
         score: float | None,
         extra_info: dict[str, Any] | None = None,
         origin: str | None = None,
+        cluster_id: int | None = None,
     ) -> None:
         """
         Saves or updates the Word of the Day selection for a specific date.
@@ -311,17 +316,18 @@ class Storage:
             conn.execute(
                 """
                 INSERT INTO wotd_history
-                (date, word, definition, source, score, extra_info, origin)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (date, word, definition, source, score, extra_info, origin, cluster_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(date) DO UPDATE SET
                     word = excluded.word,
                     definition = excluded.definition,
                     source = excluded.source,
                     score = excluded.score,
                     extra_info = excluded.extra_info,
-                    origin = excluded.origin
+                    origin = excluded.origin,
+                    cluster_id = excluded.cluster_id
                 """,
-                (date, cleaned_word, definition, source, score, extra_info_str, origin),
+                (date, cleaned_word, definition, source, score, extra_info_str, origin, cluster_id),
             )
             conn.commit()
 
@@ -334,7 +340,7 @@ class Storage:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT date, word, definition, source, score, extra_info, origin
+                SELECT date, word, definition, source, score, extra_info, origin, cluster_id
                 FROM wotd_history WHERE date = ?
                 """,
                 (date,),
@@ -355,6 +361,7 @@ class Storage:
                     "score": row["score"],
                     "extra_info": extra_info,
                     "origin": row["origin"],
+                    "cluster_id": row["cluster_id"],
                 }
             return None
 
@@ -368,7 +375,7 @@ class Storage:
             cursor = conn.cursor()
             cursor.execute(
                 f"""
-                SELECT date, word, definition, source, score, extra_info, origin
+                SELECT date, word, definition, source, score, extra_info, origin, cluster_id
                 FROM wotd_history ORDER BY date DESC {limit_clause}
                 """
             )
@@ -390,6 +397,32 @@ class Storage:
                         "score": row["score"],
                         "extra_info": extra_info,
                         "origin": row["origin"],
+                        "cluster_id": row["cluster_id"],
                     }
                 )
             return history
+
+    def get_last_used_cluster_id(self) -> int | None:
+        """
+        Retrieves the cluster_id of the most recently chosen Word of the Day.
+        """
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT cluster_id FROM wotd_history
+                WHERE cluster_id IS NOT NULL
+                ORDER BY date DESC LIMIT 1
+                """
+            )
+            row = cursor.fetchone()
+            return row[0] if row else None
+
+    def get_next_cluster_id(self, optimal_k: int) -> int:
+        """
+        Retrieves yesterday's cluster ID from the DB and computes the next one in the cycle.
+        """
+        last_used_id = self.get_last_used_cluster_id()
+        if last_used_id is None:
+            return 0
+        return (last_used_id + 1) % optimal_k

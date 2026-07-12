@@ -309,6 +309,24 @@ def run_pipeline(
         embedding_k=embedding_k,
     )
 
+    from .scorers import EmbeddingScorer
+    today_cluster_id = None
+    if use_embeddings and isinstance(scorer, EmbeddingScorer):
+        try:
+            stable_centroids, optimal_k = scorer.get_optimal_seed_clusters()
+            today_cluster_id = storage.get_next_cluster_id(optimal_k)
+            today_target_centroid = stable_centroids[today_cluster_id]
+            scorer.set_target_centroid(today_target_centroid)
+            logger.info(
+                f"Dynamic seed rotation: using cluster {today_cluster_id} "
+                f"of {optimal_k} total clusters."
+            )
+        except Exception as exc:
+            logger.warning(
+                f"Failed to set up dynamic seed-target clustering: {exc}. "
+                "Proceeding with standard EmbeddingScorer."
+            )
+
     logger.info("Initializing WordOfTheDayPipeline...")
 
     # Load recently used words to filter them out efficiently in memory across all modes
@@ -433,8 +451,9 @@ def run_pipeline(
                 definition=chosen.definition,
                 source=src,
                 score=chosen.score if chosen.score is not None else chosen.zipf_score,
-                extra_info={"zipf_score": chosen.zipf_score, "auto": True},
+                extra_info={"zipf_score": chosen.zipf_score, "auto": True, "cluster_id": today_cluster_id},
                 origin=chosen.origin,
+                cluster_id=today_cluster_id,
             )
             print(f"\n🎉 Selected Word of the Day for {date}: {chosen.word.upper()}")
             print(f"Definition: {chosen.definition}")
@@ -482,8 +501,10 @@ def run_pipeline(
                         extra_info={
                             "zipf_score": chosen.zipf_score,
                             "interactive": True,
+                            "cluster_id": today_cluster_id,
                         },
                         origin=chosen.origin,
+                        cluster_id=today_cluster_id,
                     )
                     print(
                         f"\n🎉 Saved Word of the Day for {date}: {chosen.word.upper()}"

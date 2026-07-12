@@ -178,3 +178,66 @@ def test_embedding_scorer_missing_dependencies() -> None:
         with pytest.raises(ImportError) as exc_info:
             EmbeddingScorer(seed_csv_path="dummy.csv", cache_npz_path="dummy.npz")
         assert "EmbeddingScorer requires" in str(exc_info.value)
+
+
+@patch("sentence_transformers.SentenceTransformer")
+def test_embedding_scorer_clustering_and_target_scoring(
+    mock_transformer_class: MagicMock, tmp_path: Path
+) -> None:
+    """Verifies that EmbeddingScorer correctly clusters seed words and scores candidates using target centroid."""
+    csv_path = tmp_path / "seeds.csv"
+    cache_path = tmp_path / "cache.npz"
+
+    import numpy as np
+
+    # Pre-save compiled embeddings: 5 words in 2D space
+    words = np.array(["apple", "apricot", "banana", "blueberry", "cherry"])
+    embeddings = np.array(
+        [
+            [1.0, 0.1],  # Group A (apple)
+            [0.9, 0.2],  # Group A (apricot)
+            [0.1, 1.0],  # Group B (banana)
+            [0.2, 0.9],  # Group B (blueberry)
+            [0.5, 0.5],  # Group C (cherry)
+        ],
+        dtype=np.float32,
+    )
+    np.savez_compressed(cache_path, words=words, embeddings=embeddings)
+
+    mock_model = MagicMock()
+    mock_transformer_class.return_value = mock_model
+
+    # Initialize scorer
+    scorer = EmbeddingScorer(
+        seed_csv_path=csv_path,
+        cache_npz_path=cache_path,
+        model_name="dummy-model",
+    )
+
+    # 1. Test get_optimal_seed_clusters
+    stable_centroids, optimal_k = scorer.get_optimal_seed_clusters(k_min=2, k_max=3)
+    assert optimal_k in (2, 3)
+    assert stable_centroids.shape == (optimal_k, 2)
+
+    # Centroids should be sorted by norm
+    norms = np.linalg.norm(stable_centroids, axis=1)
+    assert np.all(np.diff(norms) >= 0)
+
+    # 2. Test set_target_centroid & scoring directly against the centroid
+    target_centroid = np.array([1.0, 0.0], dtype=np.float32)
+    scorer.set_target_centroid(target_centroid)
+
+    # Candidate "test" embeds as [1.0, 0.0] -> similarity should be 1.0
+    mock_model.encode.return_value = np.array([[1.0, 0.0]], dtype=np.float32)
+    score_perfect = scorer.score("test")
+    assert pytest.approx(score_perfect, 0.001) == 1.0
+
+    # Candidate "test2" embeds as [0.0, 1.0] -> similarity should be 0.0
+    mock_model.encode.return_value = np.array([[0.0, 1.0]], dtype=np.float32)
+    score_orthogonal = scorer.score("test2")
+    assert pytest.approx(score_orthogonal, 0.001) == 0.0
+
+    # Revert target centroid
+    scorer.set_target_centroid(None)
+    assert scorer.target_centroid_normalized is None
+
