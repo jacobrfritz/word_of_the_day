@@ -40,7 +40,7 @@ RUN groupadd -g 10001 appgroup && \
     chmod -R 775 /app/logs /app/cache/huggingface /app/word_of_the_day.db
 
 # Create a wrapper script so that the 'word_of_the_day' executable name still works
-RUN echo '#!/bin/sh\nexec python -m word_of_the_day.cli "$@"' > /usr/local/bin/word_of_the_day && \
+RUN echo '#!/bin/sh\nif [ ! -f /app/bootstrap.csv ] && [ ! -f /app/word_of_the_day_embeddings.csv ]; then\n  echo "No seed CSV files found. Running bootstrap_word_of_the_day.py..."\n  python /app/bootstrap_word_of_the_day.py\nfi\nexec python -m word_of_the_day.cli "$@"' > /usr/local/bin/word_of_the_day && \
     chmod +x /usr/local/bin/word_of_the_day
 
 # Copy virtual environment (cached unless dependencies in uv.lock change)
@@ -53,8 +53,7 @@ RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTr
     chown -R appuser:appgroup /app/cache/huggingface
 
 # Copy static assets and metadata/cache files
-COPY --chown=appuser:appgroup word_of_the_day_embeddings.npz /app/
-COPY --chown=appuser:appgroup bootstrap.csv /app/
+COPY --chown=appuser:appgroup bootstrap_word_of_the_day.py /app/
 COPY --chown=appuser:appgroup stop_words.txt /app/
 COPY --chown=appuser:appgroup .env.example /app/.env
 
