@@ -6,13 +6,14 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./word_of_the_day.db:/app/word_of_the_day.db
+      - wotd-db:/app/db
       - ./logs:/app/logs
     env_file:
       - .env
     environment:
       - API_HOST=0.0.0.0
       - API_PORT=8000
+      - DB_PATH=/app/db/word_of_the_day.db
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
@@ -20,3 +21,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+volumes:
+  wotd-db:
