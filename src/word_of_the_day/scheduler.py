@@ -35,16 +35,35 @@ class DailyScheduler:
         if self._thread:
             self._thread.join(timeout=5)
 
-    def _run(self) -> None:
-        # Wait a bit on startup to allow API server to start fully
-        time.sleep(5)
-        while not self._stop_event.is_set():
-            try:
-                import subprocess
-                import sys
+    def _sleep_interruptible(self, seconds: float) -> bool:
+        """Sleep for the given number of seconds, returning False early if stopped."""
+        chunk_size = 10
+        slept = 0.0
+        while slept < seconds:
+            if self._stop_event.is_set():
+                return False
+            time.sleep(min(chunk_size, seconds - slept))
+            slept += chunk_size
+        return True
 
-                logger.info("Running scheduled word selection in a subprocess...")
-                # Run the cli tool in a subprocess using the same python interpreter
+    def _run_with_retries(
+        self, max_retries: int = 3, retry_delay_seconds: int = 1800
+    ) -> bool:
+        """
+        Run the word-selection subprocess with retries on failure.
+        Returns True if any attempt succeeds.
+        """
+        import subprocess
+        import sys
+
+        for attempt in range(max_retries + 1):
+            if self._stop_event.is_set():
+                return False
+            try:
+                logger.info(
+                    f"Running scheduled word selection "
+                    f"(attempt {attempt + 1}/{max_retries + 1})..."
+                )
                 result = subprocess.run(
                     [sys.executable, "-m", "word_of_the_day.cli", "--mode", "auto"],
                     capture_output=True,
@@ -54,15 +73,39 @@ class DailyScheduler:
                 logger.info("Scheduled word selection completed successfully.")
                 if result.stdout:
                     logger.debug(f"Subprocess stdout:\n{result.stdout}")
+                return True
             except subprocess.CalledProcessError as e:
                 logger.error(
-                    f"Subprocess failed with exit code {e.returncode}.\n"
-                    f"Stdout: {e.stdout}\n"
-                    f"Stderr: {e.stderr}",
+                    f"Subprocess failed (attempt {attempt + 1}) with exit code "
+                    f"{e.returncode}.\nStdout: {e.stdout}\nStderr: {e.stderr}",
                     exc_info=True,
                 )
             except Exception as e:
-                logger.error(f"Error in scheduled task: {e}", exc_info=True)
+                logger.error(
+                    f"Error in scheduled task (attempt {attempt + 1}): {e}",
+                    exc_info=True,
+                )
+
+            if attempt < max_retries:
+                delay_min = retry_delay_seconds // 60
+                logger.info(
+                    f"Retrying word selection in {delay_min} minutes "
+                    f"(attempt {attempt + 2}/{max_retries + 1})..."
+                )
+                if not self._sleep_interruptible(retry_delay_seconds):
+                    return False
+
+        logger.error(
+            f"Word selection failed after {max_retries + 1} attempts. "
+            "Will retry at next scheduled midnight run."
+        )
+        return False
+
+    def _run(self) -> None:
+        # Wait a bit on startup to allow API server to start fully
+        time.sleep(5)
+        while not self._stop_event.is_set():
+            self._run_with_retries()
 
             # Calculate sleep time until next midnight in America/Chicago
             try:
@@ -81,14 +124,8 @@ class DailyScheduler:
             sleep_seconds = (next_run - now).total_seconds()
 
             logger.info(
-                f"Next scheduled run at: {next_run.isoformat()} (sleeping for {sleep_seconds:.1f}s)"
+                f"Next scheduled run at: {next_run.isoformat()} "
+                f"(sleeping for {sleep_seconds:.1f}s)"
             )
 
-            # Sleep in chunks to allow quick shutdown
-            chunk_size = 10
-            slept = 0
-            while slept < sleep_seconds:
-                if self._stop_event.is_set():
-                    break
-                time.sleep(min(chunk_size, sleep_seconds - slept))
-                slept += chunk_size
+            self._sleep_interruptible(sleep_seconds)

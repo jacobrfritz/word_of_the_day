@@ -50,6 +50,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    if "*" in settings.cors_origins:
+        logger.warning(
+            "CORS_ORIGINS is set to wildcard '*'. "
+            "Restrict this to your production domain(s) before deploying."
+        )
     scheduler = DailyScheduler()
     scheduler.start()
     try:
@@ -430,10 +435,12 @@ security = HTTPBearer()
 
 def verify_admin(credentials: HTTPAuthorizationCredentials = Depends(security)) -> bool:
     import hashlib
+    import secrets
 
     token = credentials.credentials
     expected_token = hashlib.sha256(settings.admin_password.encode("utf-8")).hexdigest()
-    if token != expected_token:
+    # Use secrets.compare_digest to prevent timing-based side-channel attacks
+    if not secrets.compare_digest(token, expected_token):
         raise HTTPException(status_code=401, detail="Unauthorized")
     return True
 

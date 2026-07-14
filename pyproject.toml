@@ -1,7 +1,7 @@
 [project]
 name = "word_of_the_day"
 version = "0.1.0"
-description = "A default Python project template using uv."
+description = "Daily vocabulary generator and analytics portal powered by NLP, semantic embeddings, and a glassmorphic FastAPI dashboard."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
