@@ -3,12 +3,15 @@ from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
@@ -219,3 +222,313 @@ def health_check(storage: Storage = Depends(get_storage)) -> dict[str, str]:
     except Exception as e:
         logger.error(f"Healthcheck failed: {e}")
         raise HTTPException(status_code=500, detail="Database connection failed") from e
+
+
+# --- Admin Dashboard Endpoints ---
+
+security = HTTPBearer()
+
+
+def verify_admin(credentials: HTTPAuthorizationCredentials = Depends(security)) -> bool:
+    import hashlib
+
+    token = credentials.credentials
+    expected_token = hashlib.sha256(settings.admin_password.encode("utf-8")).hexdigest()
+    if token != expected_token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return True
+
+
+class LoginRequest(BaseModel):
+    password: str
+
+
+class SaveWordRequest(BaseModel):
+    date: str
+    word: str
+    definition: str | None = None
+    source: str | None = None
+    origin: str | None = None
+    score: float | None = None
+
+
+class ExploreRequest(BaseModel):
+    sources: list[str] | None = ["quotable", "wikipedia"]
+    min_score: float | None = 2.3
+    max_score: float | None = 4.0
+    limit: int | None = 5
+    use_embeddings: bool | None = True
+
+
+@app.post("/api/admin/login")
+def admin_login(payload: LoginRequest) -> dict[str, str]:
+    import hashlib
+
+    if payload.password != settings.admin_password:
+        raise HTTPException(status_code=401, detail="Invalid password")
+    token = hashlib.sha256(payload.password.encode("utf-8")).hexdigest()
+    return {"token": token}
+
+
+@app.get("/admin", response_class=HTMLResponse)
+def read_admin() -> HTMLResponse:
+    """
+    Serves the beautiful glassmorphic Word of the Day admin dashboard.
+    """
+    html_path = Path(__file__).parent / "static" / "admin.html"
+    if not html_path.exists():
+        logger.error(f"Static admin HTML file not found at: {html_path}")
+        return HTMLResponse(
+            content="<h1>Word of the Day Admin UI not found</h1>", status_code=404
+        )
+
+    try:
+        content = html_path.read_text(encoding="utf-8")
+        return HTMLResponse(content=content)
+    except Exception as e:
+        logger.error(f"Failed to read admin static HTML: {e}")
+        return HTMLResponse(
+            content="<h1>Error loading Word of the Day Admin UI</h1>", status_code=500
+        )
+
+
+@app.post("/api/admin/word")
+def admin_save_word(
+    payload: SaveWordRequest,
+    storage: Storage = Depends(get_storage),
+    _: bool = Depends(verify_admin),
+) -> dict[str, str]:
+    from wordfreq import zipf_frequency
+
+    try:
+        datetime.strptime(payload.date, "%Y-%m-%d")
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400, detail="Invalid date format. Expected YYYY-MM-DD."
+        ) from e
+
+    word_clean = payload.word.strip().lower()
+    if not word_clean:
+        raise HTTPException(status_code=400, detail="Word cannot be empty.")
+
+    definition = payload.definition
+    origin = payload.origin
+    source = payload.source
+
+    # If definition is not provided, perform automatic lookup and validation
+    if not definition:
+        from .dictionary import DictionaryClient
+
+        try:
+            with DictionaryClient(storage=storage) as dict_client:
+                is_valid, resolved_def, resolved_origin = (
+                    dict_client.get_word_definition(word_clean)
+                )
+                if not is_valid:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"'{payload.word}' is not a valid dictionary word according to the Merriam-Webster API.",
+                    )
+                definition = resolved_def
+                origin = resolved_origin
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error during dictionary lookup for '{word_clean}': {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error looking up '{payload.word}' definition: {str(e)}",
+            ) from e
+
+    if not source:
+        source = "Organic"
+
+    score = payload.score
+    if score is None:
+        score = zipf_frequency(word_clean, "en")
+
+    storage.save_word_of_the_day(
+        date=payload.date,
+        word=word_clean,
+        definition=definition.strip(),
+        source=source.strip(),
+        score=score,
+        extra_info={"manual": True},
+        origin=origin,
+    )
+    return {"status": "success", "word": word_clean}
+
+
+@app.delete("/api/admin/word")
+def admin_delete_word(
+    date: str = Query(..., description="Date in YYYY-MM-DD format"),
+    storage: Storage = Depends(get_storage),
+    _: bool = Depends(verify_admin),
+) -> dict[str, str]:
+    try:
+        datetime.strptime(date, "%Y-%m-%d")
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400, detail="Invalid date format. Expected YYYY-MM-DD."
+        ) from e
+
+    storage.delete_word_of_the_day(date)
+    return {"status": "success", "message": f"Deleted word for {date}"}
+
+
+@app.get("/api/admin/stats")
+def admin_stats(
+    storage: Storage = Depends(get_storage),
+    _: bool = Depends(verify_admin),
+) -> dict[str, Any]:
+    with storage._connect() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM wotd_history")
+        total_words = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM dictionary_cache")
+        cache_size = cursor.fetchone()[0]
+
+        cursor.execute("SELECT source, COUNT(*) FROM wotd_history GROUP BY source")
+        sources_counts = {row[0]: row[1] for row in cursor.fetchall()}
+
+    db_size = 0
+    if storage.db_path.exists():
+        db_size = storage.db_path.stat().st_size
+
+    return {
+        "total_words": total_words,
+        "cache_size": cache_size,
+        "sources_counts": sources_counts,
+        "db_size_bytes": db_size,
+        "db_path": str(storage.db_path),
+    }
+
+
+@app.post("/api/admin/cache/clear")
+def admin_clear_cache(
+    storage: Storage = Depends(get_storage),
+    _: bool = Depends(verify_admin),
+) -> dict[str, str]:
+    with storage._connect() as conn:
+        conn.execute("DELETE FROM dictionary_cache")
+        conn.commit()
+    return {"status": "success", "message": "Dictionary cache cleared."}
+
+
+@app.get("/api/admin/logs")
+def admin_logs(
+    lines: int = Query(100, description="Number of tail lines to retrieve"),
+    _: bool = Depends(verify_admin),
+) -> dict[str, list[str]]:
+    log_path = Path(settings.log_file)
+    if not log_path.exists():
+        return {"logs": []}
+    try:
+        content = log_path.read_text(encoding="utf-8").splitlines()
+        tail = content[-lines:] if len(content) > lines else content
+        return {"logs": tail}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read logs: {e}") from e
+
+
+@app.post("/api/admin/explore")
+def admin_explore(
+    payload: ExploreRequest,
+    storage: Storage = Depends(get_storage),
+    _: bool = Depends(verify_admin),
+) -> dict[str, list[dict[str, Any]]]:
+    from .generator import WordSourceGenerator
+    from .main import create_connectors, get_word_scorer
+    from .pipeline import WordOfTheDayPipeline
+    from .utils import map_source_name
+
+    selected_sources = payload.sources or ["quotable", "wikipedia"]
+    if "all" in selected_sources:
+        selected_sources = [
+            "wikipedia",
+            "gutenberg",
+            "nyt",
+            "quotable",
+            "poetry_db",
+            "substack",
+        ]
+
+    connectors = create_connectors(sources=selected_sources)
+    if not connectors:
+        raise HTTPException(status_code=400, detail="No valid connectors initialized")
+
+    source_texts: dict[str, str] = {}
+    with WordSourceGenerator(connectors) as generator:
+        by_connector = generator.fetch_sources_by_connector(count=1, ignore_errors=True)
+        if isinstance(by_connector, dict):
+            for conn, texts in by_connector.items():
+                conn_name = conn.connector_name()
+                source_texts[map_source_name(conn_name)] = "\n\n".join(texts)
+        else:
+            content = generator.fetch_sources(count=1, ignore_errors=True)
+            source_texts["Unknown"] = content
+
+    scorer = get_word_scorer(
+        use_embeddings=payload.use_embeddings or False,
+        seed_csv_path=settings.seed_csv_path,
+        cache_npz_path=settings.cache_npz_path,
+        embedding_model=settings.embedding_model,
+        embedding_k=settings.embedding_k,
+    )
+
+    used_words = storage.get_used_words(
+        days_threshold=365, reference_date=datetime.now().strftime("%Y-%m-%d")
+    )
+
+    def is_reusable_cb(w: str) -> bool:
+        return w.lower() not in used_words
+
+    candidates_result = []
+    with WordOfTheDayPipeline(scorer=scorer, storage=storage) as pipeline:
+        all_scored = []
+        for source_name, text in source_texts.items():
+            if not text.strip():
+                continue
+            scored = pipeline.score_candidates(
+                text,
+                min_score=payload.min_score or 2.3,
+                max_score=payload.max_score or 4.0,
+                shuffle=False,
+                is_reusable_cb=is_reusable_cb,
+            )
+            for word, score in scored:
+                all_scored.append((source_name, word, score))
+
+        seen = {}
+        for source_name, word, score in all_scored:
+            word_lower = word.lower()
+            if word_lower not in seen:
+                seen[word_lower] = (source_name, score)
+            else:
+                existing_source, existing_score = seen[word_lower]
+                if scorer.higher_is_better and score > existing_score:
+                    seen[word_lower] = (source_name, score)
+                elif not scorer.higher_is_better and score < existing_score:
+                    seen[word_lower] = (source_name, score)
+
+        merged_scored = [(src, w, s) for w, (src, s) in seen.items()]
+        merged_scored.sort(key=lambda item: item[2], reverse=scorer.higher_is_better)
+
+        scored_pairs = [(w, s) for _, w, s in merged_scored]
+        validated = pipeline.validate_candidates(scored_pairs, limit=payload.limit or 5)
+
+        word_to_source = {w: src for src, w, _ in merged_scored}
+        for c in validated:
+            candidates_result.append(
+                {
+                    "word": c.word,
+                    "definition": c.definition,
+                    "score": c.score if c.score is not None else c.zipf_score,
+                    "zipf_score": c.zipf_score,
+                    "source": word_to_source.get(c.word, "Unknown"),
+                    "origin": c.origin,
+                }
+            )
+
+    return {"candidates": candidates_result}

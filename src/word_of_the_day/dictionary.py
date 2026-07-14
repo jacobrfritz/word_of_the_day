@@ -95,7 +95,8 @@ class DictionaryClient:
             cached = effective_storage.get_cached_definition(word)
             if cached is not None:
                 logger.debug(f"Cache hit for '{word}' (valid={cached[0]})")
-                return cached
+                is_valid_cached, def_cached, origin_cached = cached
+                return bool(is_valid_cached), str(def_cached), origin_cached
 
         is_valid, info, origin = self._fetch_definition_from_api(word)
 

@@ -40,8 +40,8 @@ class DailyScheduler:
         time.sleep(5)
         while not self._stop_event.is_set():
             try:
-                import sys
                 import subprocess
+                import sys
 
                 logger.info("Running scheduled word selection in a subprocess...")
                 # Run the cli tool in a subprocess using the same python interpreter

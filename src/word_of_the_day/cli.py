@@ -1,4 +1,3 @@
-# src/word_of_the_day/cli.py
 import argparse
 import sys
 
@@ -185,6 +184,18 @@ def parse_args(args: list[str]) -> argparse.Namespace:
 
 
 def main() -> None:
+    # Ensure stdout/stderr support UTF-8 to prevent UnicodeEncodeError on Windows
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
+    if hasattr(sys.stderr, "reconfigure"):
+        try:
+            sys.stderr.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
+
     parsed_args = parse_args(sys.argv[1:])
     run(
         source=parsed_args.source,

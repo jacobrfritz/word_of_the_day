@@ -113,6 +113,9 @@ class Settings(BaseSettings):
     # Scheduler configuration
     scheduler_enabled: bool = Field(default=True, validation_alias="SCHEDULER_ENABLED")
 
+    # Admin configuration
+    admin_password: str = Field(default="admin123", validation_alias="ADMIN_PASSWORD")
+
 
 class SettingsProxy:
     def __getattr__(self, name: str) -> Any:

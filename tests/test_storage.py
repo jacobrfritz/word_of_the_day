@@ -3,7 +3,6 @@ import tempfile
 from pathlib import Path
 
 import pytest
-
 from word_of_the_day.storage import Storage
 
 
@@ -14,8 +13,25 @@ def temp_db() -> Path:
         db_path = Path(tmp.name)
     yield db_path
     # Tear down
-    if db_path.exists():
-        db_path.unlink()
+    import gc
+    import sqlite3
+
+    # Force garbage collection to close any lingering sqlite3 connection/cursor objects
+    gc.collect()
+    try:
+        # Disable WAL mode to close the wal/shm files and release locks
+        conn = sqlite3.connect(db_path)
+        conn.execute("PRAGMA journal_mode=DELETE;")
+        conn.close()
+    except Exception:
+        pass
+    for suffix in ["", "-wal", "-shm"]:
+        p = Path(str(db_path) + suffix)
+        try:
+            if p.exists():
+                p.unlink()
+        except Exception:
+            pass
 
 
 def test_db_initialization_and_seeding(temp_db: Path) -> None:
@@ -328,5 +344,3 @@ def test_cluster_id_save_retrieve_and_rotation(temp_db: Path) -> None:
     assert storage.get_last_used_cluster_id() == 4
     # With optimal_k=5, 4 + 1 wraps around to 0
     assert storage.get_next_cluster_id(optimal_k=5) == 0
-
-

@@ -106,13 +106,88 @@ class EmbeddingScorer:
         """Loads or precomputes the seed word embeddings."""
         if not self.cache_npz_path.exists():
             if not self.seed_csv_path.exists():
-                raise FileNotFoundError(
-                    f"Neither the embedding cache ({self.cache_npz_path}) nor "
-                    f"the seed CSV file ({self.seed_csv_path}) was found."
-                )
+                try:
+                    self._bootstrap_seed_csv()
+                except Exception as e:
+                    raise FileNotFoundError(
+                        f"Neither the embedding cache ({self.cache_npz_path}) nor "
+                        f"the seed CSV file ({self.seed_csv_path}) was found, and auto-bootstrap failed: {e}"
+                    ) from e
             self._compile_cache()
         else:
             self._load_cache()
+
+    def _bootstrap_seed_csv(self) -> None:
+        """
+        Automatically fetches the Word of the Day RSS feed and compiles the
+        seed CSV file if it's missing on the first run.
+        """
+        import email.utils
+
+        import requests
+        from bs4 import BeautifulSoup
+
+        logger.info("Auto-bootstrapping seed CSV file from RSS feed...")
+        headers = {"User-Agent": "Mozilla/5.0"}
+        podcast_feed_url = "https://rss.art19.com/merriam-websters-word-of-the-day"
+
+        try:
+            r = requests.get(podcast_feed_url, headers=headers, timeout=15)
+            r.raise_for_status()
+            soup = BeautifulSoup(r.content, "xml")
+            items = soup.find_all("item")
+
+            records: list[dict[str, str]] = []
+            for item in items:
+                title_el = item.find("title")
+                pub_date_el = item.find("pubDate")
+                if title_el and pub_date_el:
+                    word = title_el.text.strip().lower()
+                    pub_date_str = pub_date_el.text.strip()
+                    try:
+                        dt = email.utils.parsedate_to_datetime(pub_date_str)
+                        date_str = dt.strftime("%Y-%m-%d")
+                    except Exception:
+                        continue
+                    if word and date_str:
+                        records.append({"word": word, "date": date_str})
+
+            # Sort records by date ascending
+            records.sort(key=lambda x: x["date"])
+
+            # If RSS failed to return items, use fallbacks
+            if not records:
+                raise ValueError("No records found in RSS feed.")
+
+        except Exception as e:
+            logger.warning(f"Failed to fetch RSS feed: {e}. Using fallback seed words.")
+            # Hardcoded fallbacks to guarantee bootstrap even offline
+            fallbacks = [
+                ("2026-07-01", "sagacious"),
+                ("2026-07-02", "loquacious"),
+                ("2026-07-03", "capricious"),
+                ("2026-07-04", "ephemeral"),
+                ("2026-07-05", "taciturn"),
+                ("2026-07-06", "gregarious"),
+                ("2026-07-07", "alacrity"),
+                ("2026-07-08", "cacophony"),
+                ("2026-07-09", "mercurial"),
+                ("2026-07-10", "pernicious"),
+            ]
+            records = [{"word": w, "date": d} for d, w in fallbacks]
+
+        # Ensure parent directories exist
+        self.seed_csv_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Write to CSV
+        with open(self.seed_csv_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=["word", "date"])
+            writer.writeheader()
+            writer.writerows(records)
+
+        logger.info(
+            f"Successfully bootstrapped {len(records)} seed words to {self.seed_csv_path}"
+        )
 
     def _load_cache(self) -> None:
         """Loads cached embeddings from the npz file."""
@@ -247,6 +322,7 @@ class EmbeddingScorer:
         Sets the active target centroid for scoring candidates.
         """
         import numpy as np
+
         self.target_centroid = centroid
         if centroid is not None:
             norm = np.linalg.norm(centroid)
@@ -254,14 +330,16 @@ class EmbeddingScorer:
         else:
             self.target_centroid_normalized = None
 
-    def get_optimal_seed_clusters(self, k_min: int = 2, k_max: int = 10) -> tuple["np.ndarray", int]:
+    def get_optimal_seed_clusters(
+        self, k_min: int = 2, k_max: int = 10
+    ) -> tuple["np.ndarray", int]:
         """
         Finds the optimal number of clusters using the Elbow Method (diminishing returns)
         and returns the sorted centroids.
         """
         try:
-            from sklearn.cluster import KMeans
             import numpy as np
+            from sklearn.cluster import KMeans  # type: ignore[import-untyped]
         except ImportError as e:
             raise ImportError(
                 "Clustering requires 'scikit-learn' and 'numpy'. "
@@ -275,10 +353,10 @@ class EmbeddingScorer:
         inertias = []
         # Ensure we don't try to find more clusters than we have seed words
         max_possible_k = min(k_max, len(seed_embeddings) - 1)
-        K_range = range(k_min, max_possible_k + 1)
+        k_range = range(k_min, max_possible_k + 1)
 
-        # Handle case where K_range is empty (very few seed words)
-        if not K_range:
+        # Handle case where k_range is empty (very few seed words)
+        if not k_range:
             optimal_k = max(1, len(seed_embeddings))
             kmeans = KMeans(n_clusters=optimal_k, random_state=42, n_init="auto")
             kmeans.fit(seed_embeddings)
@@ -287,17 +365,17 @@ class EmbeddingScorer:
             return centroids[sorted_indices], optimal_k
 
         # 1. Calculate inertia for each K
-        for k in K_range:
+        for k in k_range:
             kmeans = KMeans(n_clusters=k, random_state=42, n_init="auto")
             kmeans.fit(seed_embeddings)
             inertias.append(kmeans.inertia_)
 
         # 2. Automate finding the "Elbow" (max distance from the line connecting endpoints)
-        x1, y1 = K_range[0], inertias[0]
-        x2, y2 = K_range[-1], inertias[-1]
+        x1, y1 = k_range[0], inertias[0]
+        x2, y2 = k_range[-1], inertias[-1]
 
         distances = []
-        for i, k in enumerate(K_range):
+        for i, k in enumerate(k_range):
             x3, y3 = k, inertias[i]
             # Orthogonal distance from point (x3, y3) to line connecting (x1, y1) and (x2, y2)
             numerator = np.abs((y2 - y1) * x3 - (x2 - x1) * y3 + x2 * y1 - x1 * y2)
@@ -305,7 +383,7 @@ class EmbeddingScorer:
             dist = numerator / denominator if denominator > 0 else 0.0
             distances.append(dist)
 
-        optimal_k = K_range[np.argmax(distances)]
+        optimal_k = k_range[np.argmax(distances)]
 
         # 3. Perform final clustering with optimal K
         final_kmeans = KMeans(n_clusters=optimal_k, random_state=42, n_init="auto")

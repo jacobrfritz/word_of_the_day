@@ -45,6 +45,40 @@ class Storage:
         else:
             self.db_path = Path(db_path)
 
+        # Handle the case where db_path exists as a directory (e.g. docker mount error)
+        if self.db_path.exists() and self.db_path.is_dir():
+            logger.warning(
+                f"Database path '{self.db_path}' exists as a directory. Attempting to resolve..."
+            )
+            try:
+                self.db_path.rmdir()
+                logger.info(
+                    f"Successfully removed empty directory at '{self.db_path}' to allow file creation."
+                )
+            except OSError as e:
+                logger.error(
+                    f"Database path '{self.db_path}' is a non-empty directory and cannot be removed: {e}. "
+                    "Redirecting database file inside this directory."
+                )
+                self.db_path = self.db_path / "word_of_the_day.db"
+
+        # Check if the database path directory is writable, if not, fallback to a writable location (e.g. temp directory)
+        try:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            # Try opening/creating a dummy file at the database path to check write permissions
+            with open(self.db_path, "a"):
+                pass
+        except OSError as e:
+            import tempfile
+
+            fallback_dir = Path(tempfile.gettempdir())
+            fallback_path = fallback_dir / "word_of_the_day.db"
+            logger.error(
+                f"Configured database path '{self.db_path}' is not writable ({e}). "
+                f"Falling back to temporary database path: '{fallback_path}'"
+            )
+            self.db_path = fallback_path
+
         self._init_db()
         if bootstrap:
             self._bootstrap_from_csv()
@@ -327,8 +361,23 @@ class Storage:
                     origin = excluded.origin,
                     cluster_id = excluded.cluster_id
                 """,
-                (date, cleaned_word, definition, source, score, extra_info_str, origin, cluster_id),
+                (
+                    date,
+                    cleaned_word,
+                    definition,
+                    source,
+                    score,
+                    extra_info_str,
+                    origin,
+                    cluster_id,
+                ),
             )
+            conn.commit()
+
+    def delete_word_of_the_day(self, date: str) -> None:
+        """Deletes the Word of the Day record for a given date."""
+        with self._connect() as conn:
+            conn.execute("DELETE FROM wotd_history WHERE date = ?", (date,))
             conn.commit()
 
     def get_word_of_the_day(self, date: str) -> WordOfTheDayRecord | None:

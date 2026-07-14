@@ -34,10 +34,10 @@ ENV HF_HOME="/app/cache/huggingface"
 # Create directories and set up non-root user
 RUN groupadd -g 10001 appgroup && \
     useradd -r -u 10001 -g appgroup appuser && \
-    mkdir -p /app/logs /app/cache/huggingface && \
+    mkdir -p /app/logs /app/cache/huggingface /app/db && \
     touch /app/word_of_the_day.db && \
     chown -R appuser:appgroup /app && \
-    chmod -R 775 /app/logs /app/cache/huggingface /app/word_of_the_day.db
+    chmod -R 775 /app/logs /app/cache/huggingface /app/db /app/word_of_the_day.db
 
 # Create a wrapper script so that the 'word_of_the_day' executable name still works
 RUN echo '#!/bin/sh\nif [ ! -f /app/bootstrap.csv ] && [ ! -f /app/word_of_the_day_embeddings.csv ]; then\n  echo "No seed CSV files found. Running bootstrap_word_of_the_day.py..."\n  python /app/bootstrap_word_of_the_day.py\nfi\nexec python -m word_of_the_day.cli "$@"' > /usr/local/bin/word_of_the_day && \

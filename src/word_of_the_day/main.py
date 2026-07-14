@@ -310,6 +310,7 @@ def run_pipeline(
     )
 
     from .scorers import EmbeddingScorer
+
     today_cluster_id = None
     if use_embeddings and isinstance(scorer, EmbeddingScorer):
         try:
@@ -451,7 +452,11 @@ def run_pipeline(
                 definition=chosen.definition,
                 source=src,
                 score=chosen.score if chosen.score is not None else chosen.zipf_score,
-                extra_info={"zipf_score": chosen.zipf_score, "auto": True, "cluster_id": today_cluster_id},
+                extra_info={
+                    "zipf_score": chosen.zipf_score,
+                    "auto": True,
+                    "cluster_id": today_cluster_id,
+                },
                 origin=chosen.origin,
                 cluster_id=today_cluster_id,
             )
@@ -597,6 +602,17 @@ def run(
             return
         run_manual_set(word=word, date=date, storage=storage)
         return
+    if mode == "auto":
+        existing = storage.get_word_of_the_day(date)
+        if existing:
+            logger.info(
+                f"Word of the Day is already set for {date}: '{existing['word']}'. "
+                "Skipping auto-selection."
+            )
+            print(
+                f"\n🎉 Word of the Day already set for {date}: {existing['word'].upper()}"
+            )
+            return
 
     run_pipeline(
         source=source,

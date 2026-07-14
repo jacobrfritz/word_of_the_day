@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard - Word of the Day</title>
+
+  <!-- Premium Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,500&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/static/style.css?v=6">
+  <link rel="stylesheet" href="/static/admin.css?v=1">
+</head>
+<body class="theme-gold">
+  <!-- Ambient background lighting -->
+  <div class="ambient-glow glow-1"></div>
+  <div class="ambient-glow glow-2"></div>
+
+  <!-- Minimalist Navbar -->
+  <header class="navbar">
+    <div class="navbar-container">
+      <a href="/" class="brand">word<span>.</span>admin</a>
+      <div class="theme-switcher">
+        <button class="theme-dot active" data-theme="gold" aria-label="Obsidian Gold Theme" title="Obsidian Gold"></button>
+        <button class="theme-dot" data-theme="nordic" aria-label="Nordic Slate Theme" title="Nordic Slate"></button>
+        <button class="theme-dot" data-theme="forest" aria-label="Forest Moss Theme" title="Forest Moss"></button>
+      </div>
+    </div>
+  </header>
+
+  <main class="centered-layout admin-layout">
+    <!-- Login Screen -->
+    <section class="glass-card auth-container" id="loginScreen">
+      <h2 class="section-title text-center">Admin Access</h2>
+      <p class="section-subtitle text-center">Enter your administrator password to unlock</p>
+
+      <form id="loginForm" class="admin-form">
+        <div class="form-group">
+          <label for="adminPassword">Password</label>
+          <input type="password" id="adminPassword" required placeholder="Enter password...">
+        </div>
+        <div id="loginError" class="alert-message error-message" style="display: none;">
+          Incorrect password. Please try again.
+        </div>
+        <button type="submit" class="submit-btn">Unlock Dashboard</button>
+      </form>
+    </section>
+
+    <!-- Main Admin Dashboard -->
+    <section class="admin-dashboard-container" id="adminDashboard" style="display: none;">
+      <!-- Tab Header -->
+      <div class="admin-tabs">
+        <button class="tab-btn active" data-tab="statsTab">Overview</button>
+        <button class="tab-btn" data-tab="scheduleTab">Schedule & History</button>
+        <button class="tab-btn" data-tab="exploreTab">Candidate Explorer</button>
+        <button class="tab-btn" data-tab="logsTab">System Logs</button>
+        <button class="logout-btn" id="logoutBtn">Lock</button>
+      </div>
+
+      <!-- Tab Content: Stats -->
+      <div class="tab-panel active" id="statsTab">
+        <div class="glass-card">
+          <h2 class="panel-title">System Metrics</h2>
+          <div class="stats-grid">
+            <div class="stat-card">
+              <span class="stat-label">Total Selected Words</span>
+              <span class="stat-val" id="statTotalWords">-</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Cached Definitions</span>
+              <span class="stat-val" id="statCacheSize">-</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Database Size</span>
+              <span class="stat-val" id="statDbSize">-</span>
+            </div>
+          </div>
+
+          <div class="db-actions">
+            <h3>Database Utilities</h3>
+            <div class="actions-row">
+              <button class="action-btn-danger" id="clearCacheBtn">Clear Dictionary Cache</button>
+              <button class="action-btn-secondary" id="refreshStatsBtn">Refresh Metrics</button>
+            </div>
+            <p class="helper-text mt-1">Clearing the dictionary cache forces the selection pipeline to re-fetch word definitions from the Merriam-Webster API.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab Content: Schedule -->
+      <div class="tab-panel" id="scheduleTab">
+        <div class="glass-card mb-2">
+          <h2 class="panel-title" id="formTitle">Schedule Word of the Day</h2>
+          <form id="scheduleForm" class="admin-form grid-form">
+            <div class="form-group col-6">
+              <label for="wordDate">Target Date</label>
+              <input type="date" id="wordDateInput" required>
+            </div>
+            <div class="form-group col-6">
+              <label for="wordWord">Word</label>
+              <input type="text" id="wordWord" required placeholder="e.g. serendipity">
+            </div>
+            <div class="form-group col-12">
+              <button type="submit" class="submit-btn">Save Selection</button>
+            </div>
+          </form>
+          <div id="scheduleSuccess" class="alert-message success-message" style="display: none;">
+            Word of the Day saved successfully!
+          </div>
+        </div>
+
+        <div class="glass-card">
+          <h2 class="panel-title">Selection History</h2>
+          <div class="table-container">
+            <table class="history-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Word</th>
+                  <th>Source</th>
+                  <th>Definition</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="historyTableBody">
+                <tr>
+                  <td colspan="5" class="text-center">Loading selection history...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab Content: Candidate Explorer -->
+      <div class="tab-panel" id="exploreTab">
+        <div class="glass-card mb-2">
+          <h2 class="panel-title">Run Text Harvesting & Candidate Selection</h2>
+          <p class="panel-subtitle">Harvest texts from data sources, score and filter candidate words based on Zipf frequency or embeddings similarity, then choose which candidate to schedule.</p>
+
+          <form id="exploreForm" class="admin-form grid-form">
+            <div class="form-group col-12">
+              <label>Corpus Sources</label>
+              <div class="checkbox-group">
+                <label><input type="checkbox" name="exploreSources" value="quotable" checked> Quotable API</label>
+                <label><input type="checkbox" name="exploreSources" value="wikipedia" checked> Wikipedia</label>
+                <label><input type="checkbox" name="exploreSources" value="poetry_db"> PoetryDB</label>
+                <label><input type="checkbox" name="exploreSources" value="substack"> Substack Feed</label>
+                <label><input type="checkbox" name="exploreSources" value="gutenberg"> Gutenberg Book</label>
+              </div>
+            </div>
+            <div class="form-group col-3">
+              <label for="exploreMinScore">Min Zipf Score</label>
+              <input type="number" id="exploreMinScore" step="0.1" value="2.3">
+            </div>
+            <div class="form-group col-3">
+              <label for="exploreMaxScore">Max Zipf Score</label>
+              <input type="number" id="exploreMaxScore" step="0.1" value="4.0">
+            </div>
+            <div class="form-group col-3">
+              <label for="exploreLimit">Candidate Limit</label>
+              <input type="number" id="exploreLimit" value="5">
+            </div>
+            <div class="form-group col-3">
+              <label for="exploreEmbeddings">Ranking</label>
+              <select id="exploreEmbeddings">
+                <option value="true">Seed Embeddings</option>
+                <option value="false">Zipf Score Only</option>
+              </select>
+            </div>
+            <div class="form-group col-12">
+              <button type="submit" class="submit-btn">Run Harvesting & Score Pipeline</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="glass-card explorer-results" style="position: relative; min-height: 200px;">
+          <h2 class="panel-title">Harvested Candidates</h2>
+
+          <div class="spinner-overlay" id="explorerSpinner" style="display: none;">
+            <div class="loading-spinner"></div>
+            <span class="spinner-text mt-1">Crawling endpoints and ranking words...</span>
+          </div>
+
+          <div id="explorerResultsList" class="explorer-candidates-list">
+            <p class="text-center text-muted">Trigger the harvesting pipeline to fetch fresh vocabulary suggestions.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab Content: Logs -->
+      <div class="tab-panel" id="logsTab">
+        <div class="glass-card">
+          <div class="panel-header-row">
+            <h2 class="panel-title">System Runtime Logs</h2>
+            <div class="log-actions">
+              <select id="logsLineCount">
+                <option value="50">50 Lines</option>
+                <option value="100" selected>100 Lines</option>
+                <option value="200">200 Lines</option>
+              </select>
+              <button class="action-btn-secondary" id="refreshLogsBtn">Refresh</button>
+            </div>
+          </div>
+
+          <div class="terminal-container">
+            <pre class="terminal-body" id="logsTerminalBody">Loading logs...</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/admin.js?v=1"></script>
+</body>
+</html>

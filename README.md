@@ -243,8 +243,23 @@ The portal will be available at [http://localhost:8000](http://localhost:8000).
    # List candidates
    docker run --rm word-of-the-day --mode list
 
-   # Auto-select today\'s word
+   # Auto-select today's word
    docker run --rm \
      -v $(pwd)/word_of_the_day.db:/app/word_of_the_day.db \
      word-of-the-day --mode auto
    ```
+
+---
+
+## Windows Considerations
+
+When running the project natively on Windows (e.g., via Command Prompt or PowerShell):
+
+1. **UTF-8 Encoding for Console (Emoji Output):**
+   Windows console interfaces may default to a non-UTF-8 character map (like `cp1252`), which can raise a `UnicodeEncodeError` when the CLI prints terminal emojis (like `🎉`). The CLI automatically reconfigures `sys.stdout` and `sys.stderr` to use `utf-8` on startup. If you still encounter encoding issues in older terminal environments, force UTF-8 in your shell:
+   ```powershell
+   $env:PYTHONIOENCODING="utf-8"
+   ```
+
+2. **File Locks and Testing:**
+   Windows aggressively locks files that are open in another thread/process. In some test setups, SQLite WAL (Write-Ahead Log) mode files (`-wal` and `-shm`) can lock up during fixture teardown. The test suite has been hardened to force garbage collection and close connections before cleaning up test databases, ensuring `pytest` runs cleanly.
