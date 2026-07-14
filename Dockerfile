@@ -40,7 +40,21 @@ RUN groupadd -g 10001 appgroup && \
     chmod -R 775 /app/logs /app/cache/huggingface /app/db /app/word_of_the_day.db
 
 # Create a wrapper script so that the 'word_of_the_day' executable name still works
-RUN echo '#!/bin/sh\nSEED_CSV="${SEED_CSV_PATH:-/app/word_of_the_day_embeddings.csv}"\nif [ ! -f /app/bootstrap.csv ] && [ ! -f "$SEED_CSV" ]; then\n  echo "No seed CSV files found at $SEED_CSV. Running bootstrap_word_of_the_day.py..."\n  python /app/bootstrap_word_of_the_day.py\nfi\nexec python -m word_of_the_day.cli "$@"' > /usr/local/bin/word_of_the_day && \
+RUN printf '#!/bin/sh\n\
+if [ -n "$SEED_CSV_PATH" ] && [ ! -f "$SEED_CSV_PATH" ] && [ -f /app/word_of_the_day_embeddings.csv ]; then\n\
+  echo "Populating $SEED_CSV_PATH with pre-baked seed CSV..."\n\
+  cp /app/word_of_the_day_embeddings.csv "$SEED_CSV_PATH"\n\
+fi\n\
+if [ -n "$CACHE_NPZ_PATH" ] && [ ! -f "$CACHE_NPZ_PATH" ] && [ -f /app/word_of_the_day_embeddings.npz ]; then\n\
+  echo "Populating $CACHE_NPZ_PATH with pre-baked embeddings cache..."\n\
+  cp /app/word_of_the_day_embeddings.npz "$CACHE_NPZ_PATH"\n\
+fi\n\
+SEED_CSV="${SEED_CSV_PATH:-/app/word_of_the_day_embeddings.csv}"\n\
+if [ ! -f /app/bootstrap.csv ] && [ ! -f "$SEED_CSV" ]; then\n\
+  echo "No seed CSV files found at $SEED_CSV. Running bootstrap_word_of_the_day.py..."\n\
+  python /app/bootstrap_word_of_the_day.py\n\
+fi\n\
+exec python -m word_of_the_day.cli "$@"\n' > /usr/local/bin/word_of_the_day && \
     chmod +x /usr/local/bin/word_of_the_day
 
 # Copy virtual environment (cached unless dependencies in uv.lock change)
@@ -56,6 +70,8 @@ RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTr
 COPY --chown=appuser:appgroup bootstrap_word_of_the_day.py /app/
 COPY --chown=appuser:appgroup stop_words.txt /app/
 COPY --chown=appuser:appgroup .env.example /app/.env
+COPY --chown=appuser:appgroup word_of_the_day_embeddings.csv /app/
+COPY --chown=appuser:appgroup word_of_the_day_embeddings.npz /app/
 
 # Copy project source code
 COPY --chown=appuser:appgroup src/ /app/src/
