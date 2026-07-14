@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      - "8001:8001"
     volumes:
       - wotd-db:/app/db
       - ./logs:/app/logs
@@ -12,13 +12,13 @@ services:
       - .env
     environment:
       - API_HOST=0.0.0.0
-      - API_PORT=8000
+      - API_PORT=8001
       - DB_PATH=/app/db/word_of_the_day.db
       - SEED_CSV_PATH=/app/db/word_of_the_day_embeddings.csv
       - CACHE_NPZ_PATH=/app/db/word_of_the_day_embeddings.npz
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/healthz')"]
       interval: 30s
       timeout: 5s
       retries: 3
