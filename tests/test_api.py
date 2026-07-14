@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-
 from word_of_the_day.api import app
 from word_of_the_day.storage import Storage
 
@@ -144,3 +143,38 @@ def test_cors_headers(client: TestClient) -> None:
         },
     )
     assert response.headers.get("access-control-allow-origin") == "http://example.com"
+
+
+def test_get_embeddings_grid(client: TestClient, temp_storage: Storage) -> None:
+    # Initially history is empty, so endpoint should return empty list
+    response_empty = client.get("/api/embeddings/grid")
+    assert response_empty.status_code == 200
+    assert response_empty.json() == []
+
+    # Select seed words and save them to test history
+    target_word = "sagacious"
+    test_date = "2026-07-12"
+    temp_storage.save_word_of_the_day(
+        date=test_date,
+        word=target_word,
+        definition="test definition",
+        source="wikipedia",
+        score=3.0,
+    )
+
+    # Fetch again and confirm history mapping is merged in and filtered
+    response_updated = client.get("/api/embeddings/grid")
+    assert response_updated.status_code == 200
+    data_updated = response_updated.json()
+    assert len(data_updated) == 1
+
+    point = data_updated[0]
+    assert point["word"] == target_word
+    assert "x" in point
+    assert "y" in point
+    assert "cluster_id" in point
+    assert point["date"] == test_date
+    assert point["source"] == "wikipedia"
+    assert 0.0 <= point["x"] <= 1.0
+    assert 0.0 <= point["y"] <= 1.0
+    assert isinstance(point["cluster_id"], int)

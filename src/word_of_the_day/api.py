@@ -188,6 +188,205 @@ def get_history(
     return records
 
 
+_embeddings_grid_cache: dict[str, dict[str, Any]] | None = None
+_pca_transformer: Any = None
+_kmeans_classifier: Any = None
+_embeddings_min_max: tuple[float, float, float, float] | None = None
+
+
+def _get_base_embeddings_grid() -> (
+    tuple[dict[str, dict[str, Any]], Any, Any, tuple[float, float, float, float]]
+):
+    global \
+        _embeddings_grid_cache, \
+        _pca_transformer, \
+        _kmeans_classifier, \
+        _embeddings_min_max
+    if _embeddings_grid_cache is not None:
+        assert _embeddings_min_max is not None
+        return (
+            _embeddings_grid_cache,
+            _pca_transformer,
+            _kmeans_classifier,
+            _embeddings_min_max,
+        )
+
+    import numpy as np
+    from sklearn.cluster import KMeans  # type: ignore[import-untyped]
+    from sklearn.decomposition import PCA  # type: ignore[import-untyped]
+
+    from .scorers import EmbeddingScorer
+
+    npz_path = Path(settings.cache_npz_path)
+    if not npz_path.exists():
+        logger.warning(
+            f"Embedding cache not found at {npz_path}. Attempting to compile..."
+        )
+        try:
+            # Recompiling cache by instantiating EmbeddingScorer
+            EmbeddingScorer(
+                seed_csv_path=settings.seed_csv_path,
+                cache_npz_path=settings.cache_npz_path,
+                model_name=settings.embedding_model,
+                k=settings.embedding_k,
+            )
+        except Exception as e:
+            logger.error(f"Failed to auto-compile embedding cache: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail="Embedding space cache is missing and could not be compiled.",
+            ) from e
+
+    try:
+        data = np.load(npz_path, allow_pickle=True)
+        words = [str(w) for w in data["words"]]
+        embeddings = data["embeddings"]
+    except Exception as e:
+        logger.error(f"Failed to load NPZ cache: {e}")
+        raise HTTPException(
+            status_code=500, detail="Failed to load embedding database."
+        ) from e
+
+    if len(words) == 0:
+        raise HTTPException(status_code=500, detail="Embedding database is empty.")
+
+    try:
+        scorer = EmbeddingScorer(
+            seed_csv_path=settings.seed_csv_path,
+            cache_npz_path=settings.cache_npz_path,
+            model_name=settings.embedding_model,
+            k=settings.embedding_k,
+        )
+        _, optimal_k = scorer.get_optimal_seed_clusters()
+    except Exception as e:
+        logger.warning(
+            f"Failed to calculate optimal clusters dynamically: {e}. Defaulting to 8 clusters."
+        )
+        optimal_k = 8
+
+    # Cluster high-dimensional embeddings
+    kmeans = KMeans(n_clusters=optimal_k, random_state=42, n_init="auto")
+    cluster_ids = kmeans.fit_predict(embeddings)
+
+    # Perform PCA reduction to 2D
+    pca = PCA(n_components=2, random_state=42)
+    coords_2d = pca.fit_transform(embeddings)
+
+    x_min, x_max = float(coords_2d[:, 0].min()), float(coords_2d[:, 0].max())
+    y_min, y_max = float(coords_2d[:, 1].min()), float(coords_2d[:, 1].max())
+    _embeddings_min_max = (x_min, x_max, y_min, y_max)
+
+    x_range = x_max - x_min if x_max != x_min else 1.0
+    y_range = y_max - y_min if y_max != y_min else 1.0
+
+    _pca_transformer = pca
+    _kmeans_classifier = kmeans
+
+    _embeddings_grid_cache = {}
+    for i, word in enumerate(words):
+        w_clean = word.lower().strip()
+        x_val = float((coords_2d[i, 0] - x_min) / x_range)
+        y_val = float((coords_2d[i, 1] - y_min) / y_range)
+        _embeddings_grid_cache[w_clean] = {
+            "word": word,
+            "x": x_val,
+            "y": y_val,
+            "cluster_id": int(cluster_ids[i]),
+        }
+
+    return (
+        _embeddings_grid_cache,
+        _pca_transformer,
+        _kmeans_classifier,
+        _embeddings_min_max,
+    )
+
+
+@app.get("/api/embeddings/grid")
+def get_embeddings_grid(
+    storage: Storage = Depends(get_storage),
+) -> list[dict[str, Any]]:
+    """
+    Returns PCA-reduced 2D coordinates and cluster IDs for the vocabulary words.
+    Filters the output to only return words present in the selection history.
+    """
+    try:
+        base_cache, pca, kmeans, min_max = _get_base_embeddings_grid()
+    except Exception as e:
+        logger.error(f"Failed to generate base embeddings: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    # Fetch all history to cross-reference dates
+    history = storage.get_history(limit=None)
+
+    response_data = []
+    missing_words = []
+
+    # Map words present in the precomputed cache
+    for h in history:
+        word_clean = h["word"].lower().strip()
+        if word_clean in base_cache:
+            item = base_cache[word_clean]
+            response_data.append(
+                {
+                    "word": item["word"],
+                    "x": item["x"],
+                    "y": item["y"],
+                    "cluster_id": item["cluster_id"],
+                    "date": h["date"],
+                    "source": h["source"],
+                }
+            )
+        else:
+            missing_words.append(h)
+
+    # Dynamically encode any manual/organic words not found in the seed set
+    if missing_words:
+        try:
+            from sentence_transformers import SentenceTransformer
+
+            model = SentenceTransformer(settings.embedding_model)
+
+            words_to_encode = [h["word"].strip().lower() for h in missing_words]
+            new_embeddings = model.encode(words_to_encode, show_progress_bar=False)
+
+            # Project to 2D and predict clusters using the fitted models
+            new_coords_2d = pca.transform(new_embeddings)
+            new_cluster_ids = kmeans.predict(new_embeddings)
+
+            x_min, x_max, y_min, y_max = min_max
+            x_range = x_max - x_min if x_max != x_min else 1.0
+            y_range = y_max - y_min if y_max != y_min else 1.0
+
+            for idx, h in enumerate(missing_words):
+                x_val = float((new_coords_2d[idx, 0] - x_min) / x_range)
+                y_val = float((new_coords_2d[idx, 1] - y_min) / y_range)
+
+                # Clamp coordinates to [0, 1] bounding box
+                x_val = max(0.0, min(1.0, x_val))
+                y_val = max(0.0, min(1.0, y_val))
+
+                response_data.append(
+                    {
+                        "word": h["word"],
+                        "x": x_val,
+                        "y": y_val,
+                        "cluster_id": int(new_cluster_ids[idx]),
+                        "date": h["date"],
+                        "source": h["source"],
+                    }
+                )
+                logger.info(
+                    f"Dynamically mapped embedding for manual word '{h['word']}' to ({x_val:.3f}, {y_val:.3f})"
+                )
+        except Exception as e:
+            logger.error(f"Failed to dynamically embed missing words: {e}")
+            # Skip missing words on error instead of throwing 500
+            pass
+
+    return response_data
+
+
 @app.get("/", response_class=HTMLResponse)
 def read_root() -> HTMLResponse:
     """

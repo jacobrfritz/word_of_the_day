@@ -32,7 +32,14 @@ const elements = {
   calTriggerDate: document.getElementById('calTriggerDate'),
   calendarWidget: document.getElementById('calendarWidget'),
   calendarBody: document.getElementById('calendarBody'),
+  embeddingCanvas: document.getElementById('embeddingCanvas'),
+  embeddingTooltip: document.getElementById('embeddingTooltip'),
 };
+
+// ── Embedding space visualization state ──────────────────────────────────────
+let embeddingPoints = [];
+let hoveredPoint = null;
+
 
 // ── Calendar State ──────────────────────────────────────────────────────────
 let datesWithData = new Set();   // Set of "YYYY-MM-DD" strings
@@ -85,27 +92,27 @@ async function loadWord(date) {
       throw new Error('Not found');
     }
     const data = await response.json();
-    
+
     // Update UI
     activeDate = date;
     elements.wordDate.textContent = formatFriendlyDate(data.date);
-    
+
     // Parse definition and part of speech
     let wordStr = data.word;
     let defStr = data.definition || 'No definition found.';
     let posStr = 'unknown';
-    
+
     // Definition format is typically: "(partOfSpeech) Definition text"
     const posMatch = defStr.match(/^\(([^)]+)\)\s*(.*)/);
     if (posMatch) {
       posStr = posMatch[1];
       defStr = posMatch[2];
     }
-    
+
     elements.wordText.textContent = wordStr;
     elements.wordPos.textContent = posStr;
     elements.wordDefinition.textContent = defStr;
-    
+
     if (data.origin && data.origin.trim() !== '' && data.origin.trim().toLowerCase() !== 'not available') {
       elements.wordOriginText.textContent = data.origin;
       elements.wordOriginBox.style.display = 'block';
@@ -113,9 +120,9 @@ async function loadWord(date) {
       elements.wordOriginText.textContent = 'Not available';
       elements.wordOriginBox.style.display = 'none';
     }
-    
+
     elements.wordSource.textContent = data.source;
-    
+
     // Format Score nicely
     let scoreVal = '-';
     if (data.score !== null && data.score !== undefined) {
@@ -124,11 +131,12 @@ async function loadWord(date) {
       scoreVal = `Zipf: ${data.extra_info.zipf_score.toFixed(2)}`;
     }
     elements.wordScore.textContent = scoreVal;
-    
+
     // Highlight in history sidebar and calendar
     updateSidebarSelection(date);
     updateTriggerDate(date);
     renderCalendar();
+    drawEmbeddingSpace();
     return true;
   } catch (err) {
     elements.errorContainer.style.display = 'block';
@@ -145,30 +153,30 @@ async function loadHistory() {
     const response = await fetch('/api/history?limit=30');
     if (!response.ok) return;
     const data = await response.json();
-    
+
     elements.historyList.innerHTML = '';
     if (data.length === 0) {
       elements.historyList.innerHTML = '<div style="color: var(--text-muted); font-size: 0.9rem; text-align: center; padding: 2rem; font-family: monospace;">No history found. Run the generator script!</div>';
       return;
     }
-    
+
     data.forEach(item => {
       const div = document.createElement('div');
       div.className = `history-item ${item.date === activeDate ? 'active' : ''}`;
       div.dataset.date = item.date;
-      
+
       const parts = item.date.split('-');
       const shortDate = `${parts[1]}/${parts[2]}`; // MM/DD
-      
+
       div.innerHTML = `
         <span class="hist-word">${item.word}</span>
         <span class="hist-date">${shortDate}</span>
       `;
-      
+
       div.addEventListener('click', () => {
         loadWord(item.date);
       });
-      
+
       elements.historyList.appendChild(div);
     });
   } catch (err) {
@@ -290,24 +298,24 @@ function renderCalendar() {
 function speakWord() {
   const word = elements.wordText.textContent;
   if (!word || word === '-') return;
-  
+
   if ('speechSynthesis' in window) {
     // Cancel any ongoing speech
     window.speechSynthesis.cancel();
-    
+
     const utterance = new SpeechSynthesisUtterance(word);
-    
+
     // Select a premium English voice if available
     const voices = window.speechSynthesis.getVoices();
-    const preferredVoice = voices.find(voice => 
-      voice.lang.startsWith('en-') && 
+    const preferredVoice = voices.find(voice =>
+      voice.lang.startsWith('en-') &&
       (voice.name.includes('Google') || voice.name.includes('Natural') || voice.name.includes('Premium'))
     ) || voices.find(voice => voice.lang.startsWith('en'));
-    
+
     if (preferredVoice) {
       utterance.voice = preferredVoice;
     }
-    
+
     utterance.rate = 0.9; // Slightly slower for clear pronunciation
     window.speechSynthesis.speak(utterance);
   }
@@ -320,12 +328,12 @@ function copyWordDetails() {
   const definition = elements.wordDefinition.textContent;
   const origin = elements.wordOriginText.textContent;
   const source = elements.wordSource.textContent;
-  
+
   if (!word || word === '-') return;
-  
+
   const originStr = origin && origin !== 'Not available' ? `\n\nOrigin:\n${origin}` : '';
   const textToCopy = `Word of the Day: ${word} (${pos})\nDefinition: ${definition}${originStr}\n\nSource: ${source}`;
-  
+
   navigator.clipboard.writeText(textToCopy).then(() => {
     const tooltip = elements.copyBtn.querySelector('.tooltip');
     if (tooltip) {
@@ -337,11 +345,401 @@ function copyWordDetails() {
   });
 }
 
+
+function getActiveTheme() {
+  return localStorage.getItem('vocabulary-theme') || 'gold';
+}
+
+function getClusterColor(clusterId, theme, opacity = 1) {
+  let hue = (clusterId * 137.5) % 360;
+  let saturation = 60;
+  let lightness = 65;
+
+  if (theme === 'nordic') {
+    hue = (190 + (clusterId * 40)) % 360;
+    saturation = 70;
+    lightness = 65;
+  } else if (theme === 'forest') {
+    hue = (80 + (clusterId * 35)) % 360;
+    saturation = 50;
+    lightness = 55;
+  } else {
+    hue = (25 + (clusterId * 45)) % 360;
+    saturation = 65;
+    lightness = 60;
+  }
+
+  return `hsla(${hue}, ${saturation}%, ${lightness}%, ${opacity})`;
+}
+
+function drawEmbeddingSpace() {
+  const canvas = elements.embeddingCanvas;
+  if (!canvas) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  const parentRect = canvas.parentElement.getBoundingClientRect();
+  const size = Math.floor(parentRect.width);
+
+  // If container is collapsed during initial load, exit early and retry later
+  if (size === 0) {
+    setTimeout(drawEmbeddingSpace, 100);
+    return;
+  }
+
+  const targetWidth = Math.floor(size * dpr);
+  const targetHeight = Math.floor(size * dpr);
+
+  // Only update attributes if they changed, to avoid resetting context
+  if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+  }
+
+  const ctx = canvas.getContext('2d');
+  const theme = getActiveTheme();
+
+  // Clear canvas
+  ctx.clearRect(0, 0, size, size);
+
+  if (embeddingPoints.length === 0) return;
+
+  const width = size;
+  const height = size;
+  const padding = 25;
+
+  const activeWord = elements.wordText.textContent ? elements.wordText.textContent.toLowerCase().trim() : '';
+
+  // Helper function to draw text wrapped in a pill/badge capsule for high legibility
+  function drawBadgeLabel(text, x, y, align, baseline, isHighlighted) {
+    ctx.save();
+
+    ctx.font = isHighlighted ? '600 11px "Outfit", sans-serif' : '500 10px "JetBrains Mono", monospace';
+    const metrics = ctx.measureText(text);
+    const textWidth = metrics.width;
+    const textHeight = isHighlighted ? 12 : 10;
+
+    const padX = 8;
+    const padY = 5;
+
+    // Calculate badge box coordinates
+    let bx = x;
+    if (align === 'right') {
+      bx = x - textWidth - padX * 2;
+    } else if (align === 'center') {
+      bx = x - textWidth / 2 - padX;
+    } else {
+      bx = x;
+    }
+
+    let by = y;
+    if (baseline === 'bottom') {
+      by = y - textHeight - padY * 2;
+    } else if (baseline === 'top') {
+      by = y;
+    } else {
+      by = y - textHeight / 2 - padY;
+    }
+
+    const bw = textWidth + padX * 2;
+    const bh = textHeight + padY * 2;
+
+    // Draw badge drop shadow
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+    ctx.shadowBlur = 5;
+    ctx.shadowOffsetY = 2;
+
+    // Draw pill background
+    ctx.fillStyle = isHighlighted ? 'rgba(18, 18, 22, 0.95)' : 'rgba(24, 24, 28, 0.88)';
+    ctx.strokeStyle = isHighlighted ? 'rgba(255, 255, 255, 0.25)' : 'rgba(255, 255, 255, 0.12)';
+    ctx.lineWidth = 1;
+
+    ctx.beginPath();
+    ctx.roundRect(bx, by, bw, bh, 6);
+    ctx.fill();
+    ctx.stroke();
+
+    // Reset shadow
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
+
+    // Draw text inside the badge
+    ctx.fillStyle = isHighlighted ? '#ffffff' : 'rgba(255, 255, 255, 0.85)';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(text, bx + padX, by + padY);
+
+    ctx.restore();
+
+    return { x: bx, y: by, w: bw, h: bh };
+  }
+
+  let activePoint = null;
+
+  embeddingPoints.forEach(point => {
+    const px = padding + point.x * (width - 2 * padding);
+    const py = padding + point.y * (height - 2 * padding);
+
+    point.cx = px;
+    point.cy = py;
+
+    const isCurrent = point.word.toLowerCase().trim() === activeWord;
+    if (isCurrent) {
+      activePoint = point;
+      return; // Draw last
+    }
+
+    // Draw historical selection dots with larger radius and crisp border
+    ctx.beginPath();
+    ctx.arc(px, py, 5.5, 0, Math.PI * 2);
+    ctx.fillStyle = getClusterColor(point.cluster_id, theme, 0.9);
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+
+  if (activePoint) {
+    const px = activePoint.cx;
+    const py = activePoint.cy;
+
+    // 1. Draw active point highlight rings
+    ctx.beginPath();
+    ctx.arc(px, py, 13, 0, Math.PI * 2);
+    ctx.strokeStyle = getClusterColor(activePoint.cluster_id, theme, 0.3);
+    ctx.lineWidth = 5;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(px, py, 8, 0, Math.PI * 2);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(px, py, 5.5, 0, Math.PI * 2);
+    ctx.fillStyle = getClusterColor(activePoint.cluster_id, theme, 1);
+    ctx.fill();
+  }
+
+  // 2. Draw hovered point highlight rings (if hoveredPoint is set and is not activePoint)
+  if (hoveredPoint && hoveredPoint !== activePoint) {
+    const px = hoveredPoint.cx;
+    const py = hoveredPoint.cy;
+
+    ctx.beginPath();
+    ctx.arc(px, py, 9, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(px, py, 5.5, 0, Math.PI * 2);
+    ctx.fillStyle = getClusterColor(hoveredPoint.cluster_id, theme, 1);
+    ctx.fill();
+  }
+
+  // 3. Dynamic Constellation Pop-up on Hover
+  const neighborTarget = hoveredPoint;
+  if (neighborTarget) {
+    const tx = neighborTarget.cx;
+    const ty = neighborTarget.cy;
+
+    // Find 3 closest neighbors to the target in projected space
+    const neighbors = embeddingPoints
+      .filter(p => p.word.toLowerCase().trim() !== neighborTarget.word.toLowerCase().trim())
+      .map(p => {
+        const dx = p.x - neighborTarget.x;
+        const dy = p.y - neighborTarget.y;
+        return { point: p, dist2: dx * dx + dy * dy };
+      })
+      .sort((a, b) => a.dist2 - b.dist2)
+      .slice(0, 3)
+      .map(n => n.point);
+
+    // Draw thin constellation connection lines to neighbors
+    ctx.strokeStyle = getClusterColor(neighborTarget.cluster_id, theme, 0.45);
+    ctx.lineWidth = 1.2;
+    neighbors.forEach(n => {
+      if (n.cx !== undefined && n.cy !== undefined) {
+        ctx.beginPath();
+        ctx.moveTo(tx, ty);
+        ctx.lineTo(n.cx, n.cy);
+        ctx.stroke();
+      }
+    });
+
+    // Draw neighbor labels wrapped in clean dark badges
+    neighbors.forEach(n => {
+      if (n.cx !== undefined && n.cy !== undefined) {
+        drawBadgeLabel(n.word, n.cx + 10, n.cy, 'left', 'middle', false);
+      }
+    });
+  }
+
+  // 4. Always draw active word label badge and arrow
+  if (activePoint) {
+    const px = activePoint.cx;
+    const py = activePoint.cy;
+
+    let labelAlign = 'right';
+    let labelBaseline = 'bottom';
+    let labelX = px - 35;
+    let labelY = py - 30;
+    let arrowStartX = px - 30;
+    let arrowStartY = py - 25;
+    let arrowEndX = px - 13;
+    let arrowEndY = py - 10;
+
+    // boundary checks
+    if (px < 80) {
+      labelAlign = 'left';
+      labelX = px + 35;
+      arrowStartX = px + 30;
+      arrowEndX = px + 13;
+    }
+    if (py < 60) {
+      labelBaseline = 'top';
+      labelY = py + 30;
+      arrowStartY = py + 25;
+      arrowEndY = py + 10;
+    }
+
+    drawBadgeLabel(activePoint.word.toUpperCase(), labelX, labelY, labelAlign, labelBaseline, true);
+
+    // Draw clean arrow pointing to active point
+    function drawArrow(fromX, fromY, toX, toY, color) {
+      const headlen = 7;
+      const angle = Math.atan2(toY - fromY, toX - fromX);
+      ctx.beginPath();
+      ctx.moveTo(fromX, fromY);
+      ctx.lineTo(toX, toY);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(toX, toY);
+      ctx.lineTo(toX - headlen * Math.cos(angle - Math.PI / 6), toY - headlen * Math.sin(angle - Math.PI / 6));
+      ctx.lineTo(toX - headlen * Math.cos(angle + Math.PI / 6), toY - headlen * Math.sin(angle + Math.PI / 6));
+      ctx.fillStyle = color;
+      ctx.fill();
+    }
+
+    drawArrow(arrowStartX, arrowStartY, arrowEndX, arrowEndY, '#ffffff');
+  }
+}
+
+async function initEmbeddingVisual() {
+  const canvas = elements.embeddingCanvas;
+  if (!canvas) return;
+
+  function resize() {
+    drawEmbeddingSpace();
+  }
+
+  resize();
+  window.addEventListener('resize', resize);
+
+  try {
+    const response = await fetch('/api/embeddings/grid');
+    if (!response.ok) throw new Error('API failed');
+    embeddingPoints = await response.json();
+    drawEmbeddingSpace();
+  } catch (err) {
+    console.error('Error fetching embeddings grid:', err);
+    return;
+  }
+
+  canvas.addEventListener('mousemove', (e) => {
+    if (embeddingPoints.length === 0) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
+    let closestPoint = null;
+    let minDistance = Infinity;
+
+    embeddingPoints.forEach(point => {
+      if (point.cx === undefined || point.cy === undefined) return;
+      const dx = point.cx - mx;
+      const dy = point.cy - my;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < minDistance) {
+        minDistance = dist;
+        closestPoint = point;
+      }
+    });
+
+    const hoverThreshold = 10;
+    if (minDistance < hoverThreshold && closestPoint) {
+      if (hoveredPoint !== closestPoint) {
+        hoveredPoint = closestPoint;
+        drawEmbeddingSpace();
+
+        const tooltip = elements.embeddingTooltip;
+        if (tooltip) {
+          tooltip.style.display = 'block';
+          tooltip.style.left = `${mx + 15}px`;
+          tooltip.style.top = `${my + 15}px`;
+
+          const dateStr = closestPoint.date ? `<div class="tooltip-date">Selected: ${closestPoint.date}</div>` : '';
+          const sourceName = closestPoint.source ? closestPoint.source.charAt(0).toUpperCase() + closestPoint.source.slice(1) : 'History';
+
+          tooltip.innerHTML = `
+            <strong>${closestPoint.word}</strong>
+            <span>Cluster ${closestPoint.cluster_id + 1} (${sourceName})</span>
+            ${dateStr}
+          `;
+        }
+
+      } else {
+        const tooltip = elements.embeddingTooltip;
+        if (tooltip) {
+          tooltip.style.left = `${mx + 15}px`;
+          tooltip.style.top = `${my + 15}px`;
+        }
+      }
+    } else {
+      if (hoveredPoint !== null) {
+        hoveredPoint = null;
+        drawEmbeddingSpace();
+
+        const tooltip = elements.embeddingTooltip;
+        if (tooltip) {
+          tooltip.style.display = 'none';
+        }
+      }
+    }
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    if (hoveredPoint !== null) {
+      hoveredPoint = null;
+      drawEmbeddingSpace();
+    }
+    const tooltip = elements.embeddingTooltip;
+    if (tooltip) {
+      tooltip.style.display = 'none';
+    }
+  });
+
+  canvas.addEventListener('click', () => {
+    if (hoveredPoint && hoveredPoint.date) {
+      loadWord(hoveredPoint.date);
+    }
+  });
+}
+
 // Theme Switcher Initialization
 function initThemeSwitcher() {
   const savedTheme = localStorage.getItem('vocabulary-theme') || 'gold';
   setTheme(savedTheme);
-  
+
   document.querySelectorAll('.theme-dot').forEach(dot => {
     dot.addEventListener('click', () => {
       const theme = dot.dataset.theme;
@@ -353,15 +751,15 @@ function initThemeSwitcher() {
 function setTheme(theme) {
   // Clear previous body theme classes
   document.body.classList.remove('theme-nordic', 'theme-forest');
-  
+
   // Set theme class on body
   if (theme !== 'gold') {
     document.body.classList.add(`theme-${theme}`);
   }
-  
+
   // Save preference
   localStorage.setItem('vocabulary-theme', theme);
-  
+
   // Update active state in UI
   document.querySelectorAll('.theme-dot').forEach(dot => {
     if (dot.dataset.theme === theme) {
@@ -370,13 +768,16 @@ function setTheme(theme) {
       dot.classList.remove('active');
     }
   });
+
+  // Redraw embedding space with new theme colors
+  drawEmbeddingSpace();
 }
 
 // Initialize application events
 document.addEventListener('DOMContentLoaded', async () => {
   // Init Theme selector
   initThemeSwitcher();
-  
+
   // Pre-load voices for speechSynthesis
   if ('speechSynthesis' in window) {
     window.speechSynthesis.getVoices();
@@ -441,4 +842,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     renderCalendar();
   });
+
+  // Initialize Embedding Space Visualization
+  initEmbeddingVisual();
 });

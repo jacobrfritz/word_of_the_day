@@ -4,13 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Word of the Day Portal</title>
-  
+
   <!-- Premium Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;0,800;1,500;1,600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  
-  <link rel="stylesheet" href="/static/style.css?v=6">
+
+  <link rel="stylesheet" href="/static/style.css?v=14">
 </head>
 <body>
   <!-- Ambient background lighting -->
@@ -31,67 +31,93 @@
 
   <!-- Centered Main Content Area -->
   <main class="centered-layout">
-    
-    <!-- Word Card Showcase -->
-    <section class="glass-card active-word-container" id="wordCard">
-      <!-- Loading spinner overlay -->
-      <div class="spinner-overlay" id="loadingOverlay">
-        <div class="loading-spinner"></div>
-      </div>
-      
-      <!-- Date header metadata -->
-      <div class="card-meta-header">
-        <span class="date-badge" id="wordDate">Loading...</span>
-      </div>
-      
-      <!-- Word Showcase Header -->
-      <div class="word-header">
-        <div class="word-title-group">
-          <h2 class="word-title" id="wordText">-</h2>
-          <span class="part-of-speech" id="wordPos">unknown</span>
+
+    <div class="dashboard-grid">
+      <!-- Word Card Showcase -->
+      <section class="glass-card active-word-container" id="wordCard">
+        <!-- Loading spinner overlay -->
+        <div class="spinner-overlay" id="loadingOverlay">
+          <div class="loading-spinner"></div>
         </div>
-        
-        <!-- Action Buttons -->
-        <div class="action-buttons">
-          <button class="action-btn" id="speakBtn" aria-label="Listen to pronunciation" title="Listen">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M11 5L6 9H2v6h4l5 4V5z"></path>
-              <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
-              <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
-            </svg>
-          </button>
-          <button class="action-btn" id="copyBtn" aria-label="Copy word and definition" title="Copy">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-            </svg>
-            <span class="tooltip">Copied!</span>
-          </button>
+
+        <!-- Date header metadata -->
+        <div class="card-meta-header">
+          <span class="date-badge" id="wordDate">Loading...</span>
         </div>
-      </div>
-      
-      <!-- Content Details -->
-      <p class="definition-box" id="wordDefinition">
-        Please wait while we load today's vocabulary word.
-      </p>
-      
-      <div class="origin-box" id="wordOriginBox" style="display: none;">
-        <span class="origin-label">Etymology & Origin</span>
-        <span id="wordOriginText">-</span>
-      </div>
-      
-      <!-- Bottom stats metadata -->
-      <div class="meta-details">
-        <div class="meta-item">
-          <span class="meta-label">Discovery Source</span>
-          <span class="meta-value" id="wordSource">-</span>
+
+        <!-- Word Showcase Header -->
+        <div class="word-header">
+          <div class="word-title-group">
+            <h2 class="word-title" id="wordText">-</h2>
+            <span class="part-of-speech" id="wordPos">unknown</span>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="action-buttons">
+            <button class="action-btn" id="speakBtn" aria-label="Listen to pronunciation" title="Listen">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M11 5L6 9H2v6h4l5 4V5z"></path>
+                <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+              </svg>
+            </button>
+            <button class="action-btn" id="copyBtn" aria-label="Copy word and definition" title="Copy">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              <span class="tooltip">Copied!</span>
+            </button>
+          </div>
         </div>
-        <div class="meta-item">
-          <span class="meta-label">Word Score</span>
-          <span class="meta-value" id="wordScore">-</span>
+
+        <!-- Content Details -->
+        <p class="definition-box" id="wordDefinition">
+          Please wait while we load today's vocabulary word.
+        </p>
+
+        <div class="origin-box" id="wordOriginBox" style="display: none;">
+          <span class="origin-label">Etymology & Origin</span>
+          <span id="wordOriginText">-</span>
         </div>
-      </div>
-    </section>
+
+        <!-- Bottom stats metadata -->
+        <div class="meta-details">
+          <div class="meta-item">
+            <span class="meta-label">Discovery Source</span>
+            <span class="meta-value" id="wordSource">-</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Word Score</span>
+            <span class="meta-value" id="wordScore">-</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Embedding Space Visualization -->
+      <section class="glass-card visual-grid-card" id="embeddingCard">
+        <!-- Date header metadata -->
+        <div class="card-meta-header">
+          <span class="date-badge">Embedding Space</span>
+        </div>
+
+        <!-- Showcase Header -->
+        <div class="word-header">
+          <div class="word-title-group">
+            <h2 class="word-title" style="font-size: 2.2rem; letter-spacing: -0.03em;">Vocabulary Map</h2>
+          </div>
+        </div>
+
+        <p class="definition-box" style="font-size: 0.9rem; margin-bottom: 1.25rem; min-height: unset; line-height: 1.45;">
+          Interactive 2D projection of the word embedding space. Hover over points to explore semantic neighborhoods. Click highlighted history words to load them.
+        </p>
+
+        <div class="canvas-wrapper" style="position: relative; width: 100%; aspect-ratio: 1; border-radius: 16px; overflow: hidden; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--border-color);">
+          <canvas id="embeddingCanvas" style="display: block; width: 100%; height: 100%; cursor: crosshair;"></canvas>
+          <div id="embeddingTooltip" class="embedding-tooltip" style="display: none; position: absolute; pointer-events: none; z-index: 100; padding: 0.5rem 0.75rem; background: rgba(18, 18, 22, 0.9); border: 1px solid var(--border-focus); border-radius: 8px; color: var(--text-primary); font-family: var(--font-sans); font-size: 0.8rem; box-shadow: var(--shadow-subtle); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);"></div>
+        </div>
+      </section>
+    </div>
 
     <!-- Custom Calendar Date Picker (collapsible) -->
     <section class="lookup-section">
@@ -166,7 +192,7 @@
                 <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="var(--text-muted)" />
               </marker>
             </defs>
-            
+
             <!-- Connecting Lines -->
             <line x1="115" y1="60" x2="140" y2="60" stroke="var(--border-color)" stroke-width="2" marker-end="url(#arrow)" class="flow-line" />
             <line x1="256" y1="60" x2="281" y2="60" stroke="var(--border-color)" stroke-width="2" marker-end="url(#arrow)" class="flow-line" />
@@ -257,6 +283,6 @@
     </div>
   </footer>
 
-  <script src="/static/index.js?v=6" defer></script>
+  <script src="/static/index.js?v=14" defer></script>
 </body>
 </html>

@@ -14,6 +14,8 @@ services:
       - API_HOST=0.0.0.0
       - API_PORT=8000
       - DB_PATH=/app/db/word_of_the_day.db
+      - SEED_CSV_PATH=/app/db/word_of_the_day_embeddings.csv
+      - CACHE_NPZ_PATH=/app/db/word_of_the_day_embeddings.npz
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]

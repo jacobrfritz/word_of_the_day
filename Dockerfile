@@ -40,7 +40,7 @@ RUN groupadd -g 10001 appgroup && \
     chmod -R 775 /app/logs /app/cache/huggingface /app/db /app/word_of_the_day.db
 
 # Create a wrapper script so that the 'word_of_the_day' executable name still works
-RUN echo '#!/bin/sh\nif [ ! -f /app/bootstrap.csv ] && [ ! -f /app/word_of_the_day_embeddings.csv ]; then\n  echo "No seed CSV files found. Running bootstrap_word_of_the_day.py..."\n  python /app/bootstrap_word_of_the_day.py\nfi\nexec python -m word_of_the_day.cli "$@"' > /usr/local/bin/word_of_the_day && \
+RUN echo '#!/bin/sh\nSEED_CSV="${SEED_CSV_PATH:-/app/word_of_the_day_embeddings.csv}"\nif [ ! -f /app/bootstrap.csv ] && [ ! -f "$SEED_CSV" ]; then\n  echo "No seed CSV files found at $SEED_CSV. Running bootstrap_word_of_the_day.py..."\n  python /app/bootstrap_word_of_the_day.py\nfi\nexec python -m word_of_the_day.cli "$@"' > /usr/local/bin/word_of_the_day && \
     chmod +x /usr/local/bin/word_of_the_day
 
 # Copy virtual environment (cached unless dependencies in uv.lock change)

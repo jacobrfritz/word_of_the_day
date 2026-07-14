@@ -7,21 +7,21 @@
   --bg-dark: #08080a;
   --bg-card: rgba(18, 18, 22, 0.65);
   --bg-card-solid: #121216;
-  
+
   --border-color: rgba(255, 255, 255, 0.05);
   --border-focus: rgba(209, 178, 128, 0.25);
   --border-hover: rgba(255, 255, 255, 0.1);
-  
+
   --text-primary: #f4f4f5;   /* zinc-100 */
   --text-secondary: #d4d4d8; /* zinc-300 */
   --text-muted: #71717a;     /* zinc-500 */
-  
+
   --accent: #d1b280;         /* Champagne Gold */
   --accent-rgb: 209, 178, 128;
   --accent-hover: #c4a36e;
   --accent-muted: rgba(209, 178, 128, 0.08);
   --accent-gradient: linear-gradient(135deg, #e2d1b8 0%, #d1b280 100%);
-  
+
   --transition-smooth: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   --shadow-subtle: 0 4px 30px rgba(0, 0, 0, 0.4);
   --shadow-hover: 0 20px 40px -15px rgba(0, 0, 0, 0.5);
@@ -32,15 +32,15 @@ body.theme-nordic {
   --bg-dark: #0b0e14;
   --bg-card: rgba(18, 22, 30, 0.65);
   --bg-card-solid: #12161e;
-  
+
   --border-color: rgba(255, 255, 255, 0.04);
   --border-focus: rgba(103, 232, 249, 0.25);
   --border-hover: rgba(255, 255, 255, 0.08);
-  
+
   --text-primary: #f8fafc;   /* slate-50 */
   --text-secondary: #cbd5e1; /* slate-300 */
   --text-muted: #64748b;     /* slate-500 */
-  
+
   --accent: #67e8f9;         /* Nordic Cyan */
   --accent-rgb: 103, 232, 249;
   --accent-hover: #22d3ee;
@@ -53,15 +53,15 @@ body.theme-forest {
   --bg-dark: #0a0c0a;
   --bg-card: rgba(18, 22, 18, 0.65);
   --bg-card-solid: #121612;
-  
+
   --border-color: rgba(255, 255, 255, 0.04);
   --border-focus: rgba(167, 243, 208, 0.25);
   --border-hover: rgba(255, 255, 255, 0.08);
-  
+
   --text-primary: #f2f5f3;   /* soft sage off-white */
   --text-secondary: #c4cbc7; /* muted sage */
   --text-muted: #6c7570;     /* dark sage gray */
-  
+
   --accent: #a7f3d0;         /* Sage Green */
   --accent-rgb: 167, 243, 208;
   --accent-hover: #6ee7b7;
@@ -873,11 +873,11 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   .word-title {
     font-size: 2.75rem;
   }
-  
+
   .glass-card {
     padding: 2rem;
   }
-  
+
   .meta-details {
     grid-template-columns: 1fr;
     gap: 1rem;
@@ -1146,3 +1146,80 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   cursor: not-allowed;
 }
 
+
+/* ==========================================================================
+   Embedding Space Scatter Plot Visual Layout
+   ========================================================================== */
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2.5rem;
+  width: 100%;
+}
+
+
+@media (min-width: 1024px) {
+  .centered-layout {
+    max-width: 900px !important;
+  }
+}
+
+.canvas-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 540px;
+  aspect-ratio: 1;
+  border-radius: 16px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-color);
+  margin: 1.5rem auto 0;
+}
+
+.canvas-wrapper canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+}
+
+.embedding-tooltip {
+  display: none;
+  position: absolute;
+  pointer-events: none;
+  z-index: 100;
+  padding: 0.6rem 0.85rem;
+  background: rgba(10, 10, 14, 0.92);
+  border: 1px solid var(--border-focus);
+  border-radius: 10px;
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: opacity 0.15s ease;
+  line-height: 1.4;
+}
+
+.embedding-tooltip strong {
+  display: block;
+  font-size: 0.9rem;
+  color: var(--accent);
+  margin-bottom: 0.2rem;
+  font-family: 'Outfit', sans-serif;
+  text-transform: capitalize;
+}
+
+.embedding-tooltip span {
+  color: var(--text-secondary);
+  font-family: inherit;
+}
+
+.embedding-tooltip .tooltip-date {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.2rem;
+  font-family: monospace;
+}

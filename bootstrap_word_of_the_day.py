@@ -106,5 +106,6 @@ def save_to_csv(data, filename="word_of_the_day_embeddings.csv"):
 
 
 if __name__ == "__main__":
-    wotd_data = fetch_new_words()
-    save_to_csv(wotd_data)
+    csv_path = os.environ.get("SEED_CSV_PATH", "word_of_the_day_embeddings.csv")
+    wotd_data = fetch_new_words(filename=csv_path)
+    save_to_csv(wotd_data, filename=csv_path)

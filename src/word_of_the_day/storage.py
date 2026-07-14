@@ -181,7 +181,10 @@ class Storage:
         project_root = Path(__file__).resolve().parent.parent.parent
         bootstrap_csv = project_root / "bootstrap.csv"
         if not bootstrap_csv.exists():
-            bootstrap_csv = project_root / "word_of_the_day_embeddings.csv"
+            csv_path = Path(settings.seed_csv_path)
+            bootstrap_csv = (
+                csv_path if csv_path.is_absolute() else project_root / csv_path
+            )
 
         if not bootstrap_csv.exists():
             logger.info("No seed CSV files found. Database started empty.")
