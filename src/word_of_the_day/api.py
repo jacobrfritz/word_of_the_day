@@ -149,7 +149,7 @@ def get_word(
                         definition=definition,
                         source=record["source"],
                         score=record["score"],
-                        extra_info=record["extra_info"],
+                       extra_info=record["extra_info"],
                         origin=origin,
                         cluster_id=record.get("cluster_id"),
                     )

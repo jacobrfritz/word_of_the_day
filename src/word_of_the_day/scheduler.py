@@ -60,6 +60,34 @@ class DailyScheduler:
             if self._stop_event.is_set():
                 return False
             try:
+                # 1. Run bootstrap to fetch new words
+                from pathlib import Path
+                project_root = Path(__file__).resolve().parents[2]
+                bootstrap_script = project_root / "bootstrap_word_of_the_day.py"
+                if bootstrap_script.exists():
+                    try:
+                        logger.info(f"Running daily bootstrap: {bootstrap_script} (attempt {attempt + 1})")
+                        bootstrap_result = subprocess.run(
+                            [sys.executable, str(bootstrap_script)],
+                            capture_output=True,
+                            text=True,
+                            check=False,
+                        )
+                        if bootstrap_result.returncode == 0:
+                            logger.info("Daily bootstrap completed successfully.")
+                            if bootstrap_result.stdout:
+                                logger.debug(f"Bootstrap stdout:\n{bootstrap_result.stdout}")
+                        else:
+                            logger.warning(
+                                f"Daily bootstrap finished with non-zero exit code {bootstrap_result.returncode}.\n"
+                                f"Stderr: {bootstrap_result.stderr}"
+                            )
+                    except Exception as e:
+                        logger.warning(f"Error running daily bootstrap: {e}", exc_info=True)
+                else:
+                    logger.warning(f"Bootstrap script not found at expected path: {bootstrap_script}")
+
+                # 2. Run the main word-selection subprocess
                 logger.info(
                     f"Running scheduled word selection "
                     f"(attempt {attempt + 1}/{max_retries + 1})..."

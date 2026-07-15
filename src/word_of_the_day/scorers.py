@@ -104,15 +104,43 @@ class EmbeddingScorer:
 
     def _initialize(self) -> None:
         """Loads or precomputes the seed word embeddings."""
-        if not self.cache_npz_path.exists():
-            if not self.seed_csv_path.exists():
-                try:
-                    self._bootstrap_seed_csv()
-                except Exception as e:
-                    raise FileNotFoundError(
-                        f"Neither the embedding cache ({self.cache_npz_path}) nor "
-                        f"the seed CSV file ({self.seed_csv_path}) was found, and auto-bootstrap failed: {e}"
-                    ) from e
+        cache_exists = self.cache_npz_path.exists()
+        csv_exists = self.seed_csv_path.exists()
+
+        if not cache_exists and not csv_exists:
+            try:
+                self._bootstrap_seed_csv()
+                csv_exists = True
+            except Exception as e:
+                raise FileNotFoundError(
+                    f"Neither the embedding cache ({self.cache_npz_path}) nor "
+                    f"the seed CSV file ({self.seed_csv_path}) was found, and auto-bootstrap failed: {e}"
+                ) from e
+
+        # If both cache and CSV exist, check if cache is consistent with the CSV
+        should_recompile = not cache_exists
+        if cache_exists and csv_exists:
+            try:
+                import numpy as np
+                cache_data = np.load(self.cache_npz_path, allow_pickle=True)
+                cached_words = set(cache_data["words"])
+
+                csv_words = set()
+                with open(self.seed_csv_path, encoding="utf-8") as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        word = row.get("word")
+                        if word:
+                            csv_words.add(word.strip().lower())
+
+                if csv_words != cached_words:
+                    logger.info("Seed CSV words differ from cached embeddings. Triggering recompilation...")
+                    should_recompile = True
+            except Exception as e:
+                logger.warning(f"Error checking cache consistency: {e}. Recompiling...")
+                should_recompile = True
+
+        if should_recompile:
             self._compile_cache()
         else:
             self._load_cache()

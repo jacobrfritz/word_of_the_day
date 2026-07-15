@@ -241,3 +241,59 @@ def test_embedding_scorer_clustering_and_target_scoring(
     scorer.set_target_centroid(None)
     assert scorer.target_centroid_normalized is None
 
+
+@patch("sentence_transformers.SentenceTransformer")
+def test_embedding_scorer_auto_recompile(
+    mock_transformer_class: MagicMock, tmp_path: Path
+) -> None:
+    """Verifies that EmbeddingScorer auto-recompiles cache when CSV words differ from NPZ cache."""
+    csv_path = tmp_path / "seeds.csv"
+    cache_path = tmp_path / "cache.npz"
+
+    import numpy as np
+
+    # 1. Pre-save cache with 2 words
+    words = np.array(["serendipity", "solitude"])
+    embeddings = np.random.rand(2, 384)
+    np.savez_compressed(cache_path, words=words, embeddings=embeddings)
+
+    # 2. Write CSV with the same 2 words (aligned)
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["word", "date"])
+        writer.writerow(["serendipity", "2026-07-09"])
+        writer.writerow(["solitude", "2026-07-08"])
+
+    # Mock the transformer
+    mock_model = MagicMock()
+    mock_transformer_class.return_value = mock_model
+    mock_model.encode.return_value = np.random.rand(3, 384)
+
+    # First init: cache matches CSV, no compilation should happen
+    scorer1 = EmbeddingScorer(
+        seed_csv_path=csv_path,
+        cache_npz_path=cache_path,
+        model_name="dummy-model",
+        k=1,
+    )
+    assert len(scorer1.seed_words) == 2
+    mock_transformer_class.assert_not_called()
+
+    # 3. Modify CSV by adding a new word "antigravity" (mismatched)
+    with open(csv_path, "a", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["antigravity", "2026-07-10"])
+
+    # Second init: cache does NOT match CSV, should trigger recompilation
+    scorer2 = EmbeddingScorer(
+        seed_csv_path=csv_path,
+        cache_npz_path=cache_path,
+        model_name="dummy-model",
+        k=1,
+    )
+    assert len(scorer2.seed_words) == 3
+    assert "antigravity" in scorer2.seed_words
+    mock_transformer_class.assert_called_once_with("dummy-model")
+    mock_model.encode.assert_called_once()
+
+

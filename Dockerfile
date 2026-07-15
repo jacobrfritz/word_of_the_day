@@ -70,8 +70,6 @@ RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTr
 COPY --chown=appuser:appgroup bootstrap_word_of_the_day.py /app/
 COPY --chown=appuser:appgroup stop_words.txt /app/
 COPY --chown=appuser:appgroup .env.example /app/.env
-COPY --chown=appuser:appgroup word_of_the_day_embeddings.csv /app/
-COPY --chown=appuser:appgroup word_of_the_day_embeddings.npz /app/
 
 # Copy project source code
 COPY --chown=appuser:appgroup src/ /app/src/
