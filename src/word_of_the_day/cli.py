@@ -76,6 +76,18 @@ def parse_args(args: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--substack-shuffle-pubs",
+        action="store_true",
+        default=True,
+        help="Randomly select Substack publications from trending feeds (default: True).",
+    )
+    parser.add_argument(
+        "--no-substack-shuffle-pubs",
+        dest="substack_shuffle_pubs",
+        action="store_false",
+        help="Disable random selection of Substack publications (takes top publications in order).",
+    )
+    parser.add_argument(
         "--min-score",
         type=float,
         default=2.3,
@@ -209,6 +221,7 @@ def main() -> None:
         substack_category=parsed_args.substack_category,
         substack_limit_pubs=parsed_args.substack_limit_pubs,
         substack_limit_posts=parsed_args.substack_limit_posts,
+        substack_shuffle_pubs=parsed_args.substack_shuffle_pubs,
         use_embeddings=parsed_args.use_embeddings,
         embedding_model=parsed_args.embedding_model,
         embedding_k=parsed_args.embedding_k,

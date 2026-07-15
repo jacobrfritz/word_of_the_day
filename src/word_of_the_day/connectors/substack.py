@@ -1,3 +1,4 @@
+import html
 import logging
 import os
 import random
@@ -53,6 +54,7 @@ class SubstackClient(Connector):
         limit_posts_per_pub: int = 3,
         timeout: float = 10.0,
         max_retries: int = 3,
+        shuffle_publications: bool = True,
     ) -> None:
         """
         Initialize the Substack Client.
@@ -63,11 +65,13 @@ class SubstackClient(Connector):
             limit_posts_per_pub: Maximum number of posts to parse per publication.
             timeout: Network timeout in seconds.
             max_retries: Number of retry attempts for transient errors.
+            shuffle_publications: Whether to randomly shuffle publications.
         """
         self.category = category
         self.limit_publications = limit_publications
         self.limit_posts_per_pub = limit_posts_per_pub
         self.max_retries = max_retries
+        self.shuffle_publications = shuffle_publications
 
         headers = {
             "User-Agent": (
@@ -270,21 +274,27 @@ class SubstackClient(Connector):
         for item in items[: self.limit_posts_per_pub]:
             title = ""
             description = ""
+            content_encoded = ""
             for child in item:
                 tag_name = child.tag.split("}")[-1] if "}" in child.tag else child.tag
                 if tag_name == "title" and child.text:
                     title = child.text.strip()
                 elif tag_name == "description" and child.text:
                     description = child.text.strip()
+                elif tag_name == "encoded" and child.text:
+                    content_encoded = child.text.strip()
 
             clean_title = self._clean_text(title)
             clean_description = self._clean_text(description)
+            clean_content = self._clean_text(content_encoded)
 
             parts = []
             if clean_title:
                 parts.append(clean_title)
             if clean_description:
                 parts.append(clean_description)
+            if clean_content:
+                parts.append(clean_content)
 
             if parts:
                 post_texts.append(" - ".join(parts))
@@ -294,8 +304,10 @@ class SubstackClient(Connector):
     def _clean_text(self, text: str) -> str:
         if not text:
             return ""
+        # Decode HTML entities robustly
+        clean = html.unescape(text)
         # Remove HTML tags
-        clean = re.sub(r"<[^>]+>", " ", text)
+        clean = re.sub(r"<[^>]+>", " ", clean)
         # Normalize whitespace (replace tabs, multiple spaces, etc. with a single space)
         clean = re.sub(r"\s+", " ", clean)
         return clean.strip()
@@ -321,7 +333,12 @@ class SubstackClient(Connector):
                 f"No trending feeds discovered for category '{self.category}'"
             )
 
-        selected_feeds = feed_urls[: self.limit_publications]
+        # Make a copy of feed_urls so we don't mutate the original discovered order
+        feeds_to_use = list(feed_urls)
+        if self.shuffle_publications:
+            random.shuffle(feeds_to_use)
+
+        selected_feeds = feeds_to_use[: self.limit_publications]
         logger.info(
             f"Fetching RSS content from {len(selected_feeds)} publications "
             f"(out of {len(feed_urls)} discovered)"

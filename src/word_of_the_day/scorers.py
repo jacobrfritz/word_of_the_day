@@ -38,6 +38,18 @@ class WordScorer(Protocol):
         """
         ...
 
+    def score_batch(self, words: list[str]) -> list[float]:
+        """
+        Score a list of words. Higher scores indicate more suitable candidates.
+
+        Args:
+            words: The list of words to score.
+
+        Returns:
+            A list of float scores corresponding to the input words.
+        """
+        ...
+
 
 class ZipfScorer:
     """
@@ -57,6 +69,12 @@ class ZipfScorer:
         Returns the Zipf frequency score of the word.
         """
         return zipf_frequency(word, self.lang)
+
+    def score_batch(self, words: list[str]) -> list[float]:
+        """
+        Returns the Zipf frequency scores of the words.
+        """
+        return [zipf_frequency(word, self.lang) for word in words]
 
 
 class EmbeddingScorer:
@@ -345,6 +363,57 @@ class EmbeddingScorer:
         # Return mean similarity
         return float(np.mean(top_k_sims))
 
+    def score_batch(self, words: list[str]) -> list[float]:
+        """
+        Scores a list of candidate words in a batch.
+        """
+        if not self.seed_words or not words:
+            return [0.0] * len(words)
+
+        import numpy as np
+
+        model = self._lazy_load_model()
+
+        # Embed candidate words in a single batch pass
+        try:
+            candidate_vectors = cast(
+                "np.ndarray",
+                model.encode(words, show_progress_bar=False),
+            )
+        except Exception as e:
+            logger.error(f"Failed to encode batch of words: {e}")
+            return [0.0] * len(words)
+
+        # Compute L2 norms of candidate vectors
+        # If candidate_vectors is 1D (because only 1 word was encoded, model.encode might still return 2D array of shape (1, dim))
+        # model.encode(list[str]) always returns a 2D array of shape (num_words, embedding_dim).
+        cand_norms = np.linalg.norm(candidate_vectors, axis=1, keepdims=True)
+        cand_norms[cand_norms == 0] = 1.0
+        normalized_candidates = candidate_vectors / cand_norms
+
+        if self.target_centroid_normalized is not None:
+            # Cosine similarity is the dot product of normalized vectors
+            # target_centroid_normalized shape: (embedding_dim,)
+            # normalized_candidates shape: (num_words, embedding_dim)
+            similarities = np.dot(normalized_candidates, self.target_centroid_normalized)
+            return [float(s) for s in similarities]
+
+        # Vectorized cosine similarities via dot product
+        # normalized_seeds shape: (num_seeds, embedding_dim)
+        # normalized_candidates.T shape: (embedding_dim, num_words)
+        # similarities shape: (num_seeds, num_words)
+        similarities = np.dot(self.normalized_seeds, normalized_candidates.T)
+
+        k = min(self.k, len(self.seed_words))
+        if k <= 0:
+            return [0.0] * len(words)
+
+        # For each candidate, we need the mean of the top-k similarities.
+        # np.partition partitions along axis 0 (the seed dimension) for each column.
+        top_k_sims = np.partition(similarities, -k, axis=0)[-k:, :]
+        mean_sims = np.mean(top_k_sims, axis=0)
+        return [float(s) for s in mean_sims]
+
     def set_target_centroid(self, centroid: "np.ndarray | None") -> None:
         """
         Sets the active target centroid for scoring candidates.
@@ -446,3 +515,21 @@ class CompositeScorer:
         for scorer, weight in self.scorers_with_weights:
             total_score += weight * scorer.score(word)
         return total_score
+
+    def score_batch(self, words: list[str]) -> list[float]:
+        """
+        Returns the weighted sum of scores from all sub-scorers in a batch.
+        """
+        if not words:
+            return []
+
+        # Initialize total scores to 0.0
+        total_scores = [0.0] * len(words)
+        for scorer, weight in self.scorers_with_weights:
+            if hasattr(scorer, "score_batch"):
+                scores = scorer.score_batch(words)
+            else:
+                scores = [scorer.score(word) for word in words]
+            for i, score in enumerate(scores):
+                total_scores[i] += weight * score
+        return total_scores

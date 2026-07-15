@@ -142,9 +142,14 @@ class WordOfTheDayPipeline:
                 filtered_words.append(word)
 
         # Step 2: Score remaining words using the injected scorer
-        scored = []
-        for word in filtered_words:
-            scored.append((word, self.scorer.score(word)))
+        if filtered_words:
+            if hasattr(self.scorer, "score_batch"):
+                scores = self.scorer.score_batch(filtered_words)
+            else:
+                scores = [self.scorer.score(word) for word in filtered_words]
+            scored = list(zip(filtered_words, scores))
+        else:
+            scored = []
 
         # Step 3: Sort candidates based on scorer preference
         reverse = self.scorer.higher_is_better

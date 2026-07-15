@@ -92,6 +92,9 @@ class Settings(BaseSettings):
     substack_limit_posts: int = Field(
         default=3, validation_alias="SUBSTACK_LIMIT_POSTS"
     )
+    substack_shuffle_pubs: bool = Field(
+        default=True, validation_alias="SUBSTACK_SHUFFLE_PUBS"
+    )
 
     # Web/API Configurations
     api_host: str = Field(default="127.0.0.1", validation_alias="API_HOST")

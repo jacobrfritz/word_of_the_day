@@ -55,6 +55,7 @@ def create_connectors(
     substack_category: str = "philosophy",
     substack_limit_pubs: int = 3,
     substack_limit_posts: int = 3,
+    substack_shuffle_pubs: bool = True,
 ) -> list["Connector"]:
     """Initializes and returns a list of connector instances based on requested sources."""
     from .connectors import (
@@ -132,6 +133,7 @@ def create_connectors(
                     category=substack_category,
                     limit_publications=substack_limit_pubs,
                     limit_posts_per_pub=substack_limit_posts,
+                    shuffle_publications=substack_shuffle_pubs,
                 )
             )
     return connectors
@@ -236,6 +238,7 @@ def run_pipeline(
     substack_category: str,
     substack_limit_pubs: int,
     substack_limit_posts: int,
+    substack_shuffle_pubs: bool,
     use_embeddings: bool,
     embedding_model: str,
     embedding_k: int,
@@ -265,6 +268,7 @@ def run_pipeline(
         substack_category=substack_category,
         substack_limit_pubs=substack_limit_pubs,
         substack_limit_posts=substack_limit_posts,
+        substack_shuffle_pubs=substack_shuffle_pubs,
     )
 
     if not connectors:
@@ -533,6 +537,7 @@ def run(
     substack_category: str = "philosophy",
     substack_limit_pubs: int = 3,
     substack_limit_posts: int = 3,
+    substack_shuffle_pubs: bool = True,
     use_embeddings: bool = True,
     embedding_model: str = "all-MiniLM-L6-v2",
     embedding_k: int = 5,
@@ -558,6 +563,8 @@ def run(
         substack_limit_pubs = settings.substack_limit_pubs
     if substack_limit_posts == 3:
         substack_limit_posts = settings.substack_limit_posts
+    if substack_shuffle_pubs is True:
+        substack_shuffle_pubs = settings.substack_shuffle_pubs
     if use_embeddings is True:
         use_embeddings = settings.use_embeddings
     if embedding_model == "all-MiniLM-L6-v2":
@@ -626,6 +633,7 @@ def run(
         substack_category=substack_category,
         substack_limit_pubs=substack_limit_pubs,
         substack_limit_posts=substack_limit_posts,
+        substack_shuffle_pubs=substack_shuffle_pubs,
         use_embeddings=use_embeddings,
         embedding_model=embedding_model,
         embedding_k=embedding_k,

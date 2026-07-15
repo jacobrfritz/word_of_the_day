@@ -89,6 +89,7 @@ def test_run_default(
         category="philosophy",
         limit_publications=3,
         limit_posts_per_pub=3,
+        shuffle_publications=True,
     )
     mock_generator_class.assert_called_once_with(
         [
@@ -395,6 +396,7 @@ def test_main_all_sources(
         category="philosophy",
         limit_publications=3,
         limit_posts_per_pub=3,
+        shuffle_publications=True,
     )
     mock_generator_class.assert_called_once_with(
         [

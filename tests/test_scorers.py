@@ -297,3 +297,125 @@ def test_embedding_scorer_auto_recompile(
     mock_model.encode.assert_called_once()
 
 
+def test_zipf_scorer_batch() -> None:
+    """Verifies that ZipfScorer score_batch matches individual scores."""
+    scorer = ZipfScorer()
+    words = ["the", "serendipity", "solitude"]
+    scores = scorer.score_batch(words)
+    assert len(scores) == len(words)
+    for w, s in zip(words, scores):
+        assert s == scorer.score(w)
+
+
+@patch("sentence_transformers.SentenceTransformer")
+def test_embedding_scorer_batch_calculation(
+    mock_transformer_class: MagicMock, tmp_path: Path
+) -> None:
+    """Verifies K-Nearest Neighbors calculation using score_batch."""
+    csv_path = tmp_path / "seeds.csv"
+    cache_path = tmp_path / "cache.npz"
+
+    import numpy as np
+
+    # Seed words: 3 distinct vectors in 2D space
+    words = np.array(["a", "b", "c"])
+    embeddings = np.array(
+        [
+            [1.0, 0.0],  # "a"
+            [0.0, 1.0],  # "b"
+            [0.707, 0.707],  # "c"
+        ],
+        dtype=np.float32,
+    )
+    np.savez_compressed(cache_path, words=words, embeddings=embeddings)
+
+    mock_model = MagicMock()
+    mock_transformer_class.return_value = mock_model
+
+    # Two candidate words: "cand1" [1.0, 0.0] and "cand2" [0.0, 1.0]
+    mock_model.encode.return_value = np.array(
+        [[1.0, 0.0], [0.0, 1.0]], dtype=np.float32
+    )
+
+    scorer = EmbeddingScorer(
+        seed_csv_path=csv_path,
+        cache_npz_path=cache_path,
+        model_name="dummy-model",
+        k=2,
+    )
+
+    # Batch score candidates
+    scores = scorer.score_batch(["cand1", "cand2"])
+    assert len(scores) == 2
+
+    # Expected score for cand1 (KNN with k=2: similarity to "a"=1.0, "c"=0.707 -> mean=0.8535)
+    # Expected score for cand2 (KNN with k=2: similarity to "b"=1.0, "c"=0.707 -> mean=0.8535)
+    assert pytest.approx(scores[0], 0.001) == 0.8535
+    assert pytest.approx(scores[1], 0.001) == 0.8535
+
+
+@patch("sentence_transformers.SentenceTransformer")
+def test_embedding_scorer_batch_centroid_scoring(
+    mock_transformer_class: MagicMock, tmp_path: Path
+) -> None:
+    """Verifies batch scoring against a target centroid."""
+    csv_path = tmp_path / "seeds.csv"
+    cache_path = tmp_path / "cache.npz"
+
+    import numpy as np
+
+    words = np.array(["apple", "banana"])
+    embeddings = np.array([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32)
+    np.savez_compressed(cache_path, words=words, embeddings=embeddings)
+
+    mock_model = MagicMock()
+    mock_transformer_class.return_value = mock_model
+
+    scorer = EmbeddingScorer(
+        seed_csv_path=csv_path,
+        cache_npz_path=cache_path,
+        model_name="dummy-model",
+    )
+
+    # Set target centroid to [1.0, 0.0]
+    target_centroid = np.array([1.0, 0.0], dtype=np.float32)
+    scorer.set_target_centroid(target_centroid)
+
+    # Candidates: "cand1" [1.0, 0.0] and "cand2" [0.0, 1.0]
+    mock_model.encode.return_value = np.array(
+        [[1.0, 0.0], [0.0, 1.0]], dtype=np.float32
+    )
+
+    scores = scorer.score_batch(["cand1", "cand2"])
+    assert len(scores) == 2
+    assert pytest.approx(scores[0], 0.001) == 1.0
+    assert pytest.approx(scores[1], 0.001) == 0.0
+
+
+def test_composite_scorer_batch() -> None:
+    """Verifies CompositeScorer score_batch combination."""
+    mock_scorer1 = MagicMock()
+    mock_scorer1.score_batch.return_value = [0.5, 0.6]
+    mock_scorer2 = MagicMock()
+    mock_scorer2.score_batch.return_value = [0.8, 0.2]
+
+    # Weights: 0.6 for scorer1, 0.4 for scorer2
+    # Combined scores:
+    # word1 = 0.6 * 0.5 + 0.4 * 0.8 = 0.3 + 0.32 = 0.62
+    # word2 = 0.6 * 0.6 + 0.4 * 0.2 = 0.36 + 0.08 = 0.44
+    composite = CompositeScorer(
+        [
+            (mock_scorer1, 0.6),
+            (mock_scorer2, 0.4),
+        ]
+    )
+
+    scores = composite.score_batch(["word1", "word2"])
+    assert len(scores) == 2
+    assert pytest.approx(scores[0]) == 0.62
+    assert pytest.approx(scores[1]) == 0.44
+    mock_scorer1.score_batch.assert_called_once_with(["word1", "word2"])
+    mock_scorer2.score_batch.assert_called_once_with(["word1", "word2"])
+
+
+
