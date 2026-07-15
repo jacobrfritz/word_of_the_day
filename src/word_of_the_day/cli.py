@@ -132,6 +132,21 @@ def parse_args(args: list[str]) -> argparse.Namespace:
         help="Disable sentence embeddings similarity and use Zipf scoring only.",
     )
     parser.add_argument(
+        "--use-lemmatization",
+        action="store_true",
+        default=True,
+        help=(
+            "Use lemmatization to reduce words to their base form "
+            "before ranking (default: True)."
+        ),
+    )
+    parser.add_argument(
+        "--no-lemmatization",
+        dest="use_lemmatization",
+        action="store_false",
+        help="Disable lemmatization and use raw words.",
+    )
+    parser.add_argument(
         "--embedding-model",
         type=str,
         default="all-MiniLM-L6-v2",
@@ -223,6 +238,7 @@ def main() -> None:
         substack_limit_posts=parsed_args.substack_limit_posts,
         substack_shuffle_pubs=parsed_args.substack_shuffle_pubs,
         use_embeddings=parsed_args.use_embeddings,
+        use_lemmatization=parsed_args.use_lemmatization,
         embedding_model=parsed_args.embedding_model,
         embedding_k=parsed_args.embedding_k,
         seed_csv_path=parsed_args.seed_csv,

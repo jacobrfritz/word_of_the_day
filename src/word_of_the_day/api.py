@@ -464,6 +464,7 @@ class ExploreRequest(BaseModel):
     max_score: float | None = 4.0
     limit: int | None = 5
     use_embeddings: bool | None = True
+    use_lemmatization: bool | None = True
 
 
 @app.post("/api/admin/login")
@@ -691,7 +692,14 @@ def admin_explore(
         return w.lower() not in used_words
 
     candidates_result = []
-    with WordOfTheDayPipeline(scorer=scorer, storage=storage) as pipeline:
+    use_lemma = (
+        payload.use_lemmatization
+        if payload.use_lemmatization is not None
+        else settings.use_lemmatization
+    )
+    with WordOfTheDayPipeline(
+        scorer=scorer, storage=storage, use_lemmatization=use_lemma
+    ) as pipeline:
         all_scored = []
         for source_name, text in source_texts.items():
             if not text.strip():

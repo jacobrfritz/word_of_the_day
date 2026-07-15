@@ -410,3 +410,31 @@ def test_main_all_sources(
     )
     captured = capsys.readouterr()
     assert "SERENDIPITY" in captured.out
+
+
+@patch("word_of_the_day.main.run_pipeline")
+@patch("word_of_the_day.main.setup_app_logging")
+@patch("word_of_the_day.storage.Storage")
+def test_run_auto_mode_forces_lemmatization(
+    mock_storage_class: MagicMock,
+    mock_setup_logging: MagicMock,
+    mock_run_pipeline: MagicMock,
+) -> None:
+    # Setup storage mock to simulate that the word is not set for the day
+    mock_storage = MagicMock()
+    mock_storage.get_word_of_the_day.return_value = None
+    mock_storage_class.return_value = mock_storage
+
+    # Call main.run in auto mode with use_lemmatization=False
+    main.run(
+        mode="auto",
+        use_lemmatization=False,
+        db_path="mock_db_path",
+    )
+
+    # Verify that run_pipeline is called with use_lemmatization=True
+    mock_run_pipeline.assert_called_once()
+    kwargs = mock_run_pipeline.call_args[1]
+    assert kwargs["use_lemmatization"] is True
+    assert kwargs["mode"] == "auto"
+

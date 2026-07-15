@@ -51,7 +51,7 @@ def test_pipeline_stop_words_loading_failure(
 
 def test_pipeline_clean_text() -> None:
     """Verifies text cleaning logic (lowercasing, punctuation, stop words)."""
-    pipeline = WordOfTheDayPipeline(stop_words={"the", "a", "is"})
+    pipeline = WordOfTheDayPipeline(stop_words={"the", "a", "is"}, use_lemmatization=False)
 
     # Mixed case, punctuation, stop words
     raw_text = "The quick brown fox jumps! Over the lazy dog's back... Is it? YES."
@@ -296,3 +296,35 @@ def test_pipeline_find_candidates_with_reusable_callback() -> None:
     assert candidates[0].word == "serendipity"
     # Verify we did NOT call Dictionary API for solitude
     mock_dict_client.get_word_definition.assert_called_once_with("serendipity")
+
+
+def test_pipeline_clean_text_with_lemmatization() -> None:
+    """Verifies that clean_text lemmatizes words when use_lemmatization is True."""
+    pipeline = WordOfTheDayPipeline(stop_words=set(), use_lemmatization=True)
+    cleaned = pipeline.clean_text("jumping cats ran")
+    # "jumping" -> "jump", "cats" -> "cat", "ran" -> "run" (or "ran")
+    assert "jump" in cleaned
+    assert "cat" in cleaned
+    assert "jumping" not in cleaned
+    assert "cats" not in cleaned
+
+
+def test_pipeline_clean_text_without_lemmatization() -> None:
+    """Verifies that clean_text does not lemmatize words when use_lemmatization is False."""
+    pipeline = WordOfTheDayPipeline(stop_words=set(), use_lemmatization=False)
+    cleaned = pipeline.clean_text("jumping cats ran")
+    assert "jumping" in cleaned
+    assert "cats" in cleaned
+    assert "jump" not in cleaned
+    assert "cat" not in cleaned
+
+
+def test_pipeline_lemmatization_and_stop_words() -> None:
+    """Verifies that lemmatized words are correctly filtered by the stop words list."""
+    # Stop word is the lemma form "jump"
+    pipeline = WordOfTheDayPipeline(stop_words={"jump"}, use_lemmatization=True)
+    cleaned = pipeline.clean_text("jumping cat")
+    assert "cat" in cleaned
+    assert "jump" not in cleaned
+    assert "jumping" not in cleaned
+

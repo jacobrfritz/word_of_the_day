@@ -73,6 +73,7 @@ class Settings(BaseSettings):
     max_score: float = Field(default=4.0, validation_alias="MAX_SCORE")
     limit: int = Field(default=3, validation_alias="LIMIT")
     use_embeddings: bool = Field(default=True, validation_alias="USE_EMBEDDINGS")
+    use_lemmatization: bool = Field(default=True, validation_alias="USE_LEMMATIZATION")
     embedding_model: str = Field(
         default="all-MiniLM-L6-v2", validation_alias="EMBEDDING_MODEL"
     )

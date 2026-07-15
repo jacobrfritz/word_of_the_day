@@ -240,6 +240,7 @@ def run_pipeline(
     substack_limit_posts: int,
     substack_shuffle_pubs: bool,
     use_embeddings: bool,
+    use_lemmatization: bool,
     embedding_model: str,
     embedding_k: int,
     seed_csv_path: str | None,
@@ -340,7 +341,9 @@ def run_pipeline(
     def is_reusable_cb(w: str) -> bool:
         return w.lower() not in used_words
 
-    with WordOfTheDayPipeline(scorer=scorer, storage=storage) as pipeline:
+    with WordOfTheDayPipeline(
+        scorer=scorer, storage=storage, use_lemmatization=use_lemmatization
+    ) as pipeline:
         all_scored: list[tuple[str, str, float]] = []  # (source_name, word, score)
         for source_name, text in source_texts.items():
             if not text.strip():
@@ -539,6 +542,7 @@ def run(
     substack_limit_posts: int = 3,
     substack_shuffle_pubs: bool = True,
     use_embeddings: bool = True,
+    use_lemmatization: bool = True,
     embedding_model: str = "all-MiniLM-L6-v2",
     embedding_k: int = 5,
     seed_csv_path: str | None = None,
@@ -567,6 +571,8 @@ def run(
         substack_shuffle_pubs = settings.substack_shuffle_pubs
     if use_embeddings is True:
         use_embeddings = settings.use_embeddings
+    if use_lemmatization is True:
+        use_lemmatization = settings.use_lemmatization
     if embedding_model == "all-MiniLM-L6-v2":
         embedding_model = settings.embedding_model
     if embedding_k == 5:
@@ -610,6 +616,7 @@ def run(
         run_manual_set(word=word, date=date, storage=storage)
         return
     if mode == "auto":
+        use_lemmatization = True
         existing = storage.get_word_of_the_day(date)
         if existing:
             logger.info(
@@ -635,6 +642,7 @@ def run(
         substack_limit_posts=substack_limit_posts,
         substack_shuffle_pubs=substack_shuffle_pubs,
         use_embeddings=use_embeddings,
+        use_lemmatization=use_lemmatization,
         embedding_model=embedding_model,
         embedding_k=embedding_k,
         seed_csv_path=seed_csv_path,

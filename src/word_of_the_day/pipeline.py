@@ -43,6 +43,7 @@ class WordOfTheDayPipeline:
         dictionary_client: DictionaryClient | None = None,
         scorer: WordScorer | None = None,
         storage: "Storage | None" = None,
+        use_lemmatization: bool = True,
     ) -> None:
         """
         Initialize the pipeline.
@@ -64,6 +65,10 @@ class WordOfTheDayPipeline:
         self.dictionary_client = dictionary_client or DictionaryClient(storage=storage)
         self.scorer = scorer or ZipfScorer()
         self.storage = storage
+        self.use_lemmatization = use_lemmatization
+        logger.info(
+            f"Initialized WordOfTheDayPipeline (lemmatization={'enabled' if self.use_lemmatization else 'disabled'})."
+        )
 
     def _load_stop_words(
         self, stop_words: set[str] | list[str] | Path | str | None
@@ -111,6 +116,15 @@ class WordOfTheDayPipeline:
         raw_words = text.lower().split()
         clean_pattern = r"[^a-zA-Z\-'’]"
         processed_words = set()
+        raw_cleaned_unique = set()
+
+        simplemma_lib = None
+        if self.use_lemmatization:
+            try:
+                import simplemma as simplemma_lib
+            except ImportError:
+                logger.warning("simplemma is not installed. Skipping lemmatization.")
+                self.use_lemmatization = False
 
         for word in raw_words:
             cleaned = re.sub(clean_pattern, "", word)
@@ -118,9 +132,25 @@ class WordOfTheDayPipeline:
             if (
                 cleaned
                 and re.match(r"^[a-z\-'’]+$", cleaned)
-                and cleaned not in self.stop_words
             ):
-                processed_words.add(cleaned)
+                if self.use_lemmatization and simplemma_lib is not None:
+                    raw_cleaned_unique.add(cleaned)
+                    lemma = simplemma_lib.lemmatize(cleaned, lang="en")
+                    if lemma not in self.stop_words:
+                        processed_words.add(lemma)
+                else:
+                    if cleaned not in self.stop_words:
+                        processed_words.add(cleaned)
+
+        if self.use_lemmatization and simplemma_lib is not None:
+            logger.info(
+                f"Lemmatization completed: reduced {len(raw_cleaned_unique)} unique cleaned words "
+                f"to {len(processed_words)} unique lemmas (excluding stop words)."
+            )
+        else:
+            logger.info(
+                f"Cleaning completed: extracted {len(processed_words)} unique words (excluding stop words)."
+            )
 
         return processed_words
 
