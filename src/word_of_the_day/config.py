@@ -1,7 +1,7 @@
 # src/word_of_the_day/config.py
 from typing import Any
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -119,6 +119,13 @@ class Settings(BaseSettings):
 
     # Admin configuration
     admin_password: str = Field(default="admin123", validation_alias="ADMIN_PASSWORD")
+
+    @field_validator("admin_password", mode="before")
+    @classmethod
+    def validate_admin_password(cls, v: Any) -> str:
+        if isinstance(v, str) and not v.strip():
+            return "admin123"
+        return v or "admin123"
 
 
 class SettingsProxy:

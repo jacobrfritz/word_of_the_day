@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,500&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="/static/style.css?v=15">
+  <link rel="stylesheet" href="/static/style.css?v=16">
   <link rel="stylesheet" href="/static/admin.css?v=2">
 </head>
 <body class="theme-gold">
@@ -21,7 +21,16 @@
   <!-- Minimalist Navbar -->
   <header class="navbar">
     <div class="navbar-container">
-      <a href="/" class="brand">word<span>.</span>admin</a>
+      <div class="navbar-left">
+        <a href="/" class="back-btn" title="Back to main page" onclick="if (window.location.port === '8001') { event.preventDefault(); window.location.href = window.location.protocol + '//' + window.location.hostname + (window.location.protocol === 'https:' ? '' : ':80'); }">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+          </svg>
+          <span>Back</span>
+        </a>
+        <a href="/" class="brand">word<span>.</span>admin</a>
+      </div>
       <div class="theme-switcher">
         <button class="theme-dot active" data-theme="gold" aria-label="Obsidian Gold Theme" title="Obsidian Gold"></button>
         <button class="theme-dot" data-theme="nordic" aria-label="Nordic Slate Theme" title="Nordic Slate"></button>
