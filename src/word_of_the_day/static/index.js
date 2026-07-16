@@ -445,6 +445,11 @@ function drawEmbeddingSpace() {
     const bw = textWidth + padX * 2;
     const bh = textHeight + padY * 2;
 
+    if (isHighlighted) {
+      bx = Math.max(5, Math.min(size - bw - 5, bx));
+      by = Math.max(5, Math.min(size - bh - 5, by));
+    }
+
     // Draw badge drop shadow
     ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
     ctx.shadowBlur = 5;
@@ -585,30 +590,12 @@ function drawEmbeddingSpace() {
     const px = activePoint.cx;
     const py = activePoint.cy;
 
-    let labelAlign = 'right';
-    let labelBaseline = 'bottom';
-    let labelX = px - 35;
-    let labelY = py - 30;
-    let arrowStartX = px - 30;
-    let arrowStartY = py - 25;
-    let arrowEndX = px - 13;
-    let arrowEndY = py - 10;
+    const labelAlign = px < size / 2 ? 'left' : 'right';
+    const labelBaseline = py < size / 2 ? 'top' : 'bottom';
+    const labelX = px < size / 2 ? px + 35 : px - 35;
+    const labelY = py < size / 2 ? py + 30 : py - 30;
 
-    // boundary checks
-    if (px < 80) {
-      labelAlign = 'left';
-      labelX = px + 35;
-      arrowStartX = px + 30;
-      arrowEndX = px + 13;
-    }
-    if (py < 60) {
-      labelBaseline = 'top';
-      labelY = py + 30;
-      arrowStartY = py + 25;
-      arrowEndY = py + 10;
-    }
-
-    drawBadgeLabel(activePoint.word.toUpperCase(), labelX, labelY, labelAlign, labelBaseline, true);
+    const badgeRect = drawBadgeLabel(activePoint.word.toUpperCase(), labelX, labelY, labelAlign, labelBaseline, true);
 
     // Draw clean arrow pointing to active point
     function drawArrow(fromX, fromY, toX, toY, color) {
@@ -627,6 +614,24 @@ function drawEmbeddingSpace() {
       ctx.lineTo(toX - headlen * Math.cos(angle + Math.PI / 6), toY - headlen * Math.sin(angle + Math.PI / 6));
       ctx.fillStyle = color;
       ctx.fill();
+    }
+
+    let arrowStartX, arrowEndX, arrowStartY, arrowEndY;
+
+    if (px < size / 2) {
+      arrowStartX = badgeRect.x - 5;
+      arrowEndX = px + 13;
+    } else {
+      arrowStartX = badgeRect.x + badgeRect.w + 5;
+      arrowEndX = px - 13;
+    }
+
+    if (py < size / 2) {
+      arrowStartY = badgeRect.y - 5;
+      arrowEndY = py + 10;
+    } else {
+      arrowStartY = badgeRect.y + badgeRect.h + 5;
+      arrowEndY = py - 10;
     }
 
     drawArrow(arrowStartX, arrowStartY, arrowEndX, arrowEndY, '#ffffff');
@@ -684,8 +689,8 @@ async function initEmbeddingVisual() {
         const tooltip = elements.embeddingTooltip;
         if (tooltip) {
           tooltip.style.display = 'block';
-          tooltip.style.left = `${mx + 15}px`;
-          tooltip.style.top = `${my + 15}px`;
+          tooltip.style.left = `${mx}px`;
+          tooltip.style.top = `${my + 20}px`;
 
           const dateStr = closestPoint.date ? `<div class="tooltip-date">Selected: ${closestPoint.date}</div>` : '';
           const sourceName = closestPoint.source ? closestPoint.source.charAt(0).toUpperCase() + closestPoint.source.slice(1) : 'History';
@@ -700,8 +705,8 @@ async function initEmbeddingVisual() {
       } else {
         const tooltip = elements.embeddingTooltip;
         if (tooltip) {
-          tooltip.style.left = `${mx + 15}px`;
-          tooltip.style.top = `${my + 15}px`;
+          tooltip.style.left = `${mx}px`;
+          tooltip.style.top = `${my + 20}px`;
         }
       }
     } else {
