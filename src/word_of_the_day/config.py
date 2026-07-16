@@ -38,6 +38,10 @@ class Settings(BaseSettings):
         default="https://www.dictionaryapi.com/api/v3/references/collegiate/json/",
         validation_alias="DICTIONARY_BASE_URL",
     )
+    free_dictionary_base_url: str = Field(
+        default="https://api.dictionaryapi.dev/api/v2/entries/en/",
+        validation_alias="FREE_DICTIONARY_BASE_URL",
+    )
     podcast_feed_url: str = Field(
         default="https://rss.art19.com/merriam-websters-word-of-the-day",
         validation_alias="PODCAST_FEED_URL",

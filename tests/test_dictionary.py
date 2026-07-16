@@ -2,7 +2,11 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 
-from word_of_the_day.dictionary import DictionaryClient, clean_mw_markup
+from word_of_the_day.dictionary import (
+    DictionaryClient,
+    clean_mw_markup,
+    extract_free_dict_definition,
+)
 
 
 def test_clean_mw_markup() -> None:
@@ -32,6 +36,7 @@ def test_dictionary_client_success() -> None:
     """
     with DictionaryClient() as client:
         client.api_key = "dummy_key"
+        client.base_url = "https://www.dictionaryapi.com/api/v3/references/collegiate/json/"
         mock_data = [
             {
                 "fl": "noun",
@@ -75,13 +80,20 @@ def test_dictionary_client_success() -> None:
 
 
 def test_dictionary_client_missing_key() -> None:
-    """Verifies get_word_definition returns False when key is missing."""
+    """Verifies that when the MW key is missing the client falls back to
+    Free Dictionary, and returns False if that also fails (404).
+    """
+    mock_response = MagicMock(spec=httpx.Response)
+    mock_response.status_code = 404
+
     with DictionaryClient() as client:
         client.api_key = None
-        is_valid, result, origin = client.get_word_definition("hello")
-        assert is_valid is False
-        assert "Configuration error" in result
-        assert origin is None
+        with patch.object(client.session, "get", return_value=mock_response):
+            is_valid, result, origin = client.get_word_definition("hello")
+
+    assert is_valid is False
+    assert result == "Not a valid English word."
+    assert origin is None
 
 
 def test_dictionary_client_not_found() -> None:
@@ -101,17 +113,21 @@ def test_dictionary_client_not_found() -> None:
 
 def test_dictionary_client_spelling_suggestions() -> None:
     """Verifies get_word_definition returns False when MW returns spelling
-    suggestions instead of word entry data.
+    suggestions and Free Dictionary also cannot find the word.
     """
     with DictionaryClient() as client:
         client.api_key = "dummy_key"
-        mock_response = MagicMock(spec=httpx.Response)
-        mock_response.status_code = 200
-        # MW returns list of strings for suggestions
-        mock_response.json.return_value = ["impetus", "impulse"]
-
-        with patch.object(client.session, "get", return_value=mock_response):
-            is_valid, result, origin = client.get_word_definition("impetu")
+        with patch.object(
+            client,
+            "_fetch_from_merriam_webster",
+            return_value=(False, "Not a valid English word.", None),
+        ):
+            with patch.object(
+                client,
+                "_fetch_from_free_dictionary",
+                return_value=(False, "Not a valid English word.", None),
+            ):
+                is_valid, result, origin = client.get_word_definition("impetu")
 
         assert is_valid is False
         assert result == "Not a valid English word."
@@ -119,14 +135,14 @@ def test_dictionary_client_spelling_suggestions() -> None:
 
 
 def test_dictionary_client_api_error() -> None:
-    """Verifies get_word_definition returns False on other status codes."""
+    """Verifies _fetch_from_merriam_webster returns False on other status codes."""
     with DictionaryClient() as client:
         client.api_key = "dummy_key"
         mock_response = MagicMock(spec=httpx.Response)
         mock_response.status_code = 500
 
         with patch.object(client.session, "get", return_value=mock_response):
-            is_valid, result, origin = client.get_word_definition("hello")
+            is_valid, result, origin = client._fetch_from_merriam_webster("hello")
 
         assert is_valid is False
         assert "API error status code: 500" in result
@@ -150,15 +166,22 @@ def test_dictionary_client_network_error() -> None:
 
 
 def test_dictionary_client_empty_response() -> None:
-    """Verifies get_word_definition handles unexpected response formats."""
+    """Verifies get_word_definition handles an empty MW response by falling
+    back to Free Dictionary, returning False if that also fails.
+    """
     with DictionaryClient() as client:
         client.api_key = "dummy_key"
-        mock_response = MagicMock(spec=httpx.Response)
-        mock_response.status_code = 200
-        mock_response.json.return_value = []
-
-        with patch.object(client.session, "get", return_value=mock_response):
-            is_valid, result, origin = client.get_word_definition("hello")
+        with patch.object(
+            client,
+            "_fetch_from_merriam_webster",
+            return_value=(False, "Not a valid English word.", None),
+        ):
+            with patch.object(
+                client,
+                "_fetch_from_free_dictionary",
+                return_value=(False, "Not a valid English word.", None),
+            ):
+                is_valid, result, origin = client.get_word_definition("hello")
 
         assert is_valid is False
         assert result == "Not a valid English word."
@@ -235,3 +258,164 @@ def test_dictionary_client_caching() -> None:
     mock_storage.get_cached_definition.assert_called_once_with("missword")
     mock_storage.cache_definition.assert_called_once_with("missword", True, "(noun) a greeting", "Middle English")
 
+
+# ---------------------------------------------------------------------------
+# Free Dictionary fallback tests
+# ---------------------------------------------------------------------------
+
+
+def test_extract_free_dict_definition() -> None:
+    """Unit-tests the Free Dictionary API response parser."""
+    data = [
+        {
+            "word": "soliloquy",
+            "meanings": [
+                {
+                    "partOfSpeech": "noun",
+                    "definitions": [
+                        {"definition": "the act of speaking one's thoughts aloud"}
+                    ],
+                }
+            ],
+        }
+    ]
+    part_of_speech, definition = extract_free_dict_definition(data)
+    assert part_of_speech == "noun"
+    assert definition == "the act of speaking one's thoughts aloud"
+
+    # Malformed / empty inputs
+    assert extract_free_dict_definition([]) == ("unknown", None)
+    assert extract_free_dict_definition(["not a dict"]) == ("unknown", None)
+    assert extract_free_dict_definition([{"word": "test"}]) == ("unknown", None)
+    assert extract_free_dict_definition([{"meanings": []}]) == ("unknown", None)
+
+
+def test_free_dict_fallback_when_mw_key_missing() -> None:
+    """When the MW key is absent the client falls back to Free Dictionary
+    and returns True when that source succeeds.
+    """
+    free_dict_data = [
+        {
+            "word": "soliloquy",
+            "meanings": [
+                {
+                    "partOfSpeech": "noun",
+                    "definitions": [
+                        {"definition": "the act of speaking one's thoughts aloud"}
+                    ],
+                }
+            ],
+        }
+    ]
+    mock_response = MagicMock(spec=httpx.Response)
+    mock_response.status_code = 200
+    mock_response.json.return_value = free_dict_data
+
+    with DictionaryClient() as client:
+        client.api_key = None
+        with patch.object(client.session, "get", return_value=mock_response):
+            is_valid, result, origin = client.get_word_definition("soliloquy")
+
+    assert is_valid is True
+    assert result == "(noun) the act of speaking one's thoughts aloud"
+    assert origin is None
+
+
+def test_free_dict_fallback_when_mw_word_not_found() -> None:
+    """When MW returns 'not a valid word', Free Dictionary is tried as fallback."""
+    with DictionaryClient() as client:
+        client.api_key = "dummy_key"
+        with patch.object(
+            client,
+            "_fetch_from_merriam_webster",
+            return_value=(False, "Not a valid English word.", None),
+        ):
+            with patch.object(
+                client,
+                "_fetch_from_free_dictionary",
+                return_value=(
+                    True,
+                    "(adjective) given to sudden and unaccountable changes of mood",
+                    None,
+                ),
+            ):
+                is_valid, result, origin = client.get_word_definition("capricious")
+
+    assert is_valid is True
+    assert "(adjective)" in result
+    assert origin is None
+
+
+def test_free_dict_fallback_when_mw_network_error() -> None:
+    """When MW raises a network error, Free Dictionary is tried as fallback."""
+    with DictionaryClient() as client:
+        client.api_key = "dummy_key"
+        with patch.object(
+            client,
+            "_fetch_from_merriam_webster",
+            return_value=(False, "Network validation failed: Connection timed out", None),
+        ):
+            with patch.object(
+                client,
+                "_fetch_from_free_dictionary",
+                return_value=(True, "(noun) the act of speaking one's thoughts aloud", None),
+            ):
+                is_valid, result, origin = client.get_word_definition("soliloquy")
+
+    assert is_valid is True
+    assert "(noun)" in result
+    assert origin is None
+
+
+def test_both_sources_fail() -> None:
+    """When both MW and Free Dictionary fail, the final result is (False, ...)."""
+    with DictionaryClient() as client:
+        client.api_key = "dummy_key"
+        with patch.object(
+            client,
+            "_fetch_from_merriam_webster",
+            return_value=(False, "Not a valid English word.", None),
+        ):
+            with patch.object(
+                client,
+                "_fetch_from_free_dictionary",
+                return_value=(False, "Not a valid English word.", None),
+            ):
+                is_valid, result, origin = client.get_word_definition("xyzzy")
+
+    assert is_valid is False
+    assert result == "Not a valid English word."
+    assert origin is None
+
+
+def test_free_dict_not_called_on_mw_success() -> None:
+    """Free Dictionary is NOT invoked when Merriam-Webster succeeds (efficiency)."""
+    with DictionaryClient() as client:
+        client.api_key = "dummy_key"
+        with patch.object(
+            client,
+            "_fetch_from_merriam_webster",
+            return_value=(True, "(noun) a greeting", "Middle English"),
+        ) as mock_mw:
+            with patch.object(
+                client, "_fetch_from_free_dictionary"
+            ) as mock_fd:
+                is_valid, result, origin = client.get_word_definition("hello")
+
+    assert is_valid is True
+    mock_mw.assert_called_once_with("hello")
+    mock_fd.assert_not_called()
+
+
+def test_free_dict_api_error() -> None:
+    """Verifies _fetch_from_free_dictionary handles non-200/404 status codes."""
+    with DictionaryClient() as client:
+        mock_response = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 500
+
+        with patch.object(client.session, "get", return_value=mock_response):
+            is_valid, result, origin = client._fetch_from_free_dictionary("hello")
+
+    assert is_valid is False
+    assert "Free Dictionary API error" in result
+    assert origin is None

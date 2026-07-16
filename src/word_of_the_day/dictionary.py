@@ -59,27 +59,72 @@ def extract_first_definition(def_data: list[Any]) -> str | None:
     return None
 
 
+def extract_free_dict_definition(data: list[Any]) -> tuple[str, str | None]:
+    """Parses a Free Dictionary API (dictionaryapi.dev) JSON response to
+    extract the first part of speech and definition text.
+
+    Args:
+        data: The parsed JSON list returned by dictionaryapi.dev.
+
+    Returns:
+        tuple[str, str | None]: (part_of_speech, definition_text).
+        Returns ("unknown", None) when the structure is unrecognised.
+    """
+    if not data or not isinstance(data, list):
+        return "unknown", None
+
+    first_entry = data[0]
+    if not isinstance(first_entry, dict):
+        return "unknown", None
+
+    meanings = first_entry.get("meanings", [])
+    if not meanings or not isinstance(meanings, list):
+        return "unknown", None
+
+    first_meaning = meanings[0]
+    if not isinstance(first_meaning, dict):
+        return "unknown", None
+
+    part_of_speech = first_meaning.get("partOfSpeech", "unknown")
+    definitions = first_meaning.get("definitions", [])
+
+    if (
+        definitions
+        and isinstance(definitions, list)
+        and isinstance(definitions[0], dict)
+    ):
+        definition = definitions[0].get("definition")
+        return part_of_speech, definition
+
+    return part_of_speech, None
+
+
 class DictionaryClient:
-    """A client for the Merriam-Webster Collegiate Dictionary API
-    to validate words and retrieve their definitions and etymologies.
+    """A client for word validation that tries Merriam-Webster first and
+    falls back to the Free Dictionary API (dictionaryapi.dev) when MW is
+    unavailable or does not recognise the word.
+
+    Waterfall:
+        1. Merriam-Webster Collegiate API (requires API key)
+        2. Free Dictionary API — no key required, broad English vocabulary
     """
 
     def __init__(self, timeout: float = 5.0, storage: Any = None) -> None:
         self.timeout = timeout
         self.session = httpx.Client(timeout=timeout)
         self.base_url = settings.dictionary_base_url
-        if "api.dictionaryapi.dev" in self.base_url:
-            self.base_url = (
-                "https://www.dictionaryapi.com/api/v3/references/collegiate/json/"
-            )
+        self.free_dict_base_url = settings.free_dictionary_base_url
         self.api_key = settings.merriam_webster_api_key
         self.storage = storage
 
     def get_word_definition(
         self, word: str, storage: Any = None
     ) -> tuple[bool, str, str | None]:
-        """Validates a word against the Merriam-Webster API and retrieves
-        its primary definition and origin, utilizing caching if storage is provided.
+        """Validates a word and retrieves its primary definition and origin,
+        utilizing caching if storage is provided.
+
+        Tries Merriam-Webster first, then falls back to the Free Dictionary
+        API if MW is unavailable or does not recognise the word.
 
         Args:
             word: The English word to validate.
@@ -106,8 +151,31 @@ class DictionaryClient:
         return is_valid, info, origin
 
     def _fetch_definition_from_api(self, word: str) -> tuple[bool, str, str | None]:
-        """Validates a word against the Merriam-Webster API and retrieves
-        its primary definition and origin.
+        """Orchestrates the validation waterfall: Merriam-Webster → Free Dictionary.
+
+        Tries MW first; if the result is not valid for any reason (missing key,
+        word not found, network error), the Free Dictionary API is tried as a
+        fallback before a final rejection is returned.
+
+        Args:
+            word: The English word to validate.
+
+        Returns:
+            tuple[bool, str, str | None]:
+                (is_valid, definition_or_error_message, origin)
+        """
+        is_valid, info, origin = self._fetch_from_merriam_webster(word)
+        if is_valid:
+            return is_valid, info, origin
+
+        logger.debug(
+            f"MW did not confirm '{word}' ({info!r}). "
+            "Trying Free Dictionary API as fallback."
+        )
+        return self._fetch_from_free_dictionary(word)
+
+    def _fetch_from_merriam_webster(self, word: str) -> tuple[bool, str, str | None]:
+        """Validates a word against the Merriam-Webster Collegiate Dictionary API.
 
         Args:
             word: The English word to validate.
@@ -117,12 +185,8 @@ class DictionaryClient:
                 (is_valid, definition_or_error_message, origin)
         """
         if not self.api_key:
-            logger.error("Merriam-Webster API key is missing from configuration.")
-            return (
-                False,
-                "Configuration error: Merriam-Webster API key is missing.",
-                None,
-            )
+            logger.debug("Merriam-Webster API key not configured; skipping MW lookup.")
+            return False, "Merriam-Webster API key not configured.", None
 
         safe_word = urllib.parse.quote(word.lower().strip())
         url = f"{self.base_url}{safe_word}?key={self.api_key}"
@@ -182,7 +246,51 @@ class DictionaryClient:
                 return False, f"API error status code: {response.status_code}", None
 
         except httpx.HTTPError as e:
-            logger.warning(f"Network error while validating '{word}': {e}")
+            logger.warning(f"Network error while validating '{word}' via MW: {e}")
+            return False, f"Network validation failed: {e}", None
+
+    def _fetch_from_free_dictionary(self, word: str) -> tuple[bool, str, str | None]:
+        """Validates a word against the Free Dictionary API (dictionaryapi.dev).
+
+        This is a no-key-required fallback that recognises a broad range of
+        standard English vocabulary. Note: this API does not provide etymology,
+        so origin is always None.
+
+        Args:
+            word: The English word to validate.
+
+        Returns:
+            tuple[bool, str, str | None]:
+                (is_valid, definition_or_error_message, origin)
+        """
+        safe_word = urllib.parse.quote(word.lower().strip())
+        url = f"{self.free_dict_base_url}{safe_word}"
+
+        try:
+            response = self.session.get(url)
+
+            if response.status_code == 200:
+                data = response.json()
+                part_of_speech, definition = extract_free_dict_definition(data)
+
+                if definition:
+                    return True, f"({part_of_speech}) {definition}", None
+
+                return True, f"({part_of_speech}) No definition text found.", None
+
+            elif response.status_code == 404:
+                return False, "Not a valid English word.", None
+            else:
+                return (
+                    False,
+                    f"Free Dictionary API error: {response.status_code}",
+                    None,
+                )
+
+        except httpx.HTTPError as e:
+            logger.warning(
+                f"Network error while validating '{word}' via Free Dictionary: {e}"
+            )
             return False, f"Network validation failed: {e}", None
 
     def close(self) -> None:
