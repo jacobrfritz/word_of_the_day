@@ -117,6 +117,18 @@ class Settings(BaseSettings):
     # Scheduler configuration
     scheduler_enabled: bool = Field(default=True, validation_alias="SCHEDULER_ENABLED")
 
+    # SMTP Settings for email pipeline
+    smtp_backend: str = Field(default="console", validation_alias="SMTP_BACKEND")
+    smtp_host: str = Field(default="localhost", validation_alias="SMTP_HOST")
+    smtp_port: int = Field(default=587, validation_alias="SMTP_PORT")
+    smtp_username: str = Field(default="", validation_alias="SMTP_USERNAME")
+    smtp_password: str = Field(default="", validation_alias="SMTP_PASSWORD")
+    smtp_from_email: str = Field(default="noreply@wordoftheday.com", validation_alias="SMTP_FROM_EMAIL")
+    smtp_from_name: str = Field(default="word.", validation_alias="SMTP_FROM_NAME")
+    smtp_use_tls: bool = Field(default=True, validation_alias="SMTP_USE_TLS")
+    smtp_use_ssl: bool = Field(default=False, validation_alias="SMTP_USE_SSL")
+    app_base_url: str = Field(default="http://localhost:8000", validation_alias="APP_BASE_URL")
+
     # Admin configuration
     admin_password: str = Field(default="admin123", validation_alias="ADMIN_PASSWORD")
 

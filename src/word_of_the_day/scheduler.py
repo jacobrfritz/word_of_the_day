@@ -18,6 +18,7 @@ class DailyScheduler:
     def __init__(self) -> None:
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
+        self._email_thread: threading.Thread | None = None
 
     def start(self) -> None:
         if not settings.scheduler_enabled:
@@ -29,11 +30,18 @@ class DailyScheduler:
         )
         self._thread.start()
 
+        self._email_thread = threading.Thread(
+            target=self._run_email_dispatch, name="WotdEmailScheduler", daemon=True
+        )
+        self._email_thread.start()
+
     def stop(self) -> None:
         logger.info("Stopping background scheduler...")
         self._stop_event.set()
         if self._thread:
             self._thread.join(timeout=5)
+        if self._email_thread:
+            self._email_thread.join(timeout=5)
 
     def _sleep_interruptible(self, seconds: float) -> bool:
         """Sleep for the given number of seconds, returning False early if stopped."""
@@ -157,3 +165,36 @@ class DailyScheduler:
             )
 
             self._sleep_interruptible(sleep_seconds)
+
+    def _run_email_dispatch(self) -> None:
+        # Wait on startup to let DB initialize and API start
+        time.sleep(10)
+        while not self._stop_event.is_set():
+            try:
+                from .email_sender import check_and_send_daily_emails
+                check_and_send_daily_emails()
+            except Exception as e:
+                logger.error(f"Error in email dispatch: {e}", exc_info=True)
+
+            try:
+                tz = zoneinfo.ZoneInfo("America/Chicago")
+            except Exception:
+                try:
+                    tz = zoneinfo.ZoneInfo("UTC")
+                except Exception:
+                    tz = None
+
+            now = datetime.now(tz)
+            # Calculate next 6:00 AM
+            next_run = now.replace(hour=6, minute=0, second=0, microsecond=0)
+            if now >= next_run:
+                next_run += timedelta(days=1)
+            sleep_seconds = (next_run - now).total_seconds()
+
+            logger.info(
+                f"Next scheduled email dispatch at: {next_run.isoformat()} "
+                f"(sleeping for {sleep_seconds:.1f}s)"
+            )
+
+            if not self._sleep_interruptible(sleep_seconds):
+                break

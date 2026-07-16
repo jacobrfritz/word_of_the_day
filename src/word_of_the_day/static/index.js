@@ -843,6 +843,107 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderCalendar();
   });
 
+  // Email Daily Digest Subscription Form Handler
+  const subscribeForm = document.getElementById('subscribeForm');
+  const subscriberEmail = document.getElementById('subscriberEmail');
+  const subscribeSuccess = document.getElementById('subscribeSuccess');
+  const subscribeError = document.getElementById('subscribeError');
+
+  if (subscribeForm && subscriberEmail) {
+    // Sync ARIA state with validation state
+    const syncAria = (el) => {
+      const isInvalid = el.matches(':user-invalid') || el.classList.contains('user-invalid-fallback');
+      el.setAttribute('aria-invalid', isInvalid ? 'true' : 'false');
+    };
+
+    // User-invalid JS Fallback (if :user-invalid isn't supported)
+    const initValidationFallback = () => {
+      if (window.CSS && window.CSS.supports && window.CSS.supports('selector(:user-invalid)')) return;
+
+      const dirtyState = new WeakMap();
+
+      const updateState = (input) => {
+        const isValid = input.checkValidity();
+        input.classList.toggle('user-invalid-fallback', !isValid);
+        input.classList.toggle('user-valid-fallback', isValid);
+        syncAria(input);
+      };
+
+      const handleEvent = (event) => {
+        const input = event.target;
+        if (input !== subscriberEmail) return;
+
+        if (event.type === 'input' || event.type === 'change') {
+          const state = dirtyState.get(input) || { hasInteracted: false, hasBlurred: false };
+          state.hasInteracted = true;
+          dirtyState.set(input, state);
+          if (state.hasBlurred) {
+            updateState(input);
+          }
+        } else if (event.type === 'blur') {
+          const state = dirtyState.get(input) || { hasInteracted: false, hasBlurred: false };
+          state.hasBlurred = true;
+          dirtyState.set(input, state);
+          if (state.hasInteracted) {
+            updateState(input);
+          }
+        }
+      };
+
+      subscribeForm.addEventListener('blur', handleEvent, true);
+      subscribeForm.addEventListener('input', handleEvent);
+      subscribeForm.addEventListener('change', handleEvent);
+    };
+
+    initValidationFallback();
+
+    subscriberEmail.addEventListener('blur', () => syncAria(subscriberEmail));
+    subscriberEmail.addEventListener('input', () => {
+      subscribeError.style.display = 'none';
+      subscriberEmail.classList.remove('user-invalid-fallback');
+      subscriberEmail.removeAttribute('aria-invalid');
+    });
+
+    subscribeForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      if (!subscribeForm.checkValidity()) {
+        subscribeError.style.display = 'block';
+        subscribeError.textContent = '❌ Please enter a valid email address.';
+        subscriberEmail.setAttribute('aria-invalid', 'true');
+        subscriberEmail.classList.add('user-invalid-fallback');
+        return;
+      }
+
+      const email = subscriberEmail.value.trim();
+      const inputGroup = subscribeForm.querySelector('.input-group');
+
+      try {
+        const response = await fetch('/api/subscribe', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ email }),
+        });
+
+        const data = await response.json();
+        if (response.ok && data.success) {
+          subscribeSuccess.style.display = 'block';
+          subscribeError.style.display = 'none';
+          if (inputGroup) inputGroup.style.display = 'none';
+        } else {
+          subscribeError.style.display = 'block';
+          subscribeError.textContent = `❌ ${data.detail || data.message || 'Subscription failed. Please try again.'}`;
+        }
+      } catch (err) {
+        subscribeError.style.display = 'block';
+        subscribeError.textContent = '❌ Network error. Please try again later.';
+        console.error('Subscription error:', err);
+      }
+    });
+  }
+
   // Initialize Embedding Space Visualization
   initEmbeddingVisual();
 });

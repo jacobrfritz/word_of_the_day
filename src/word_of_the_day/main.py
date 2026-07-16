@@ -609,6 +609,12 @@ def run(
         run_api_server(db_path=db_path)
         return
 
+    if mode == "send-emails":
+        from .email_sender import send_daily_emails
+
+        send_daily_emails(date_str=date, storage=storage)
+        return
+
     if mode == "set":
         if not word:
             logger.error("Error: --word must be provided when --mode is 'set'.")

@@ -151,6 +151,33 @@ class Storage:
                 """
             )
 
+            # Create email_subscriptions table
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS email_subscriptions (
+                    email TEXT PRIMARY KEY,
+                    unsubscribe_token TEXT NOT NULL UNIQUE,
+                    subscribed_at TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'active'
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_email_subscriptions_token ON email_subscriptions(unsubscribe_token)"
+            )
+
+            # Create email_dispatch_log table to track user-level dispatches
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS email_dispatch_log (
+                    date TEXT,
+                    email TEXT,
+                    sent_at TEXT NOT NULL,
+                    PRIMARY KEY (date, email)
+                )
+                """
+            )
+
             # One-time migration: delete old bootstrapped words from wotd_history
             cursor = conn.cursor()
             cursor.execute("DELETE FROM wotd_history WHERE source = 'Bootstrap CSV'")
@@ -478,3 +505,100 @@ class Storage:
         if last_used_id is None:
             return 0
         return (last_used_id + 1) % optimal_k
+
+    def add_subscription(self, email: str, token: str) -> None:
+        """
+        Adds a new email subscription or reactivates an existing one.
+        """
+        from datetime import datetime
+        cleaned_email = email.strip().lower()
+        now_str = datetime.now().isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO email_subscriptions (email, unsubscribe_token, subscribed_at, status)
+                VALUES (?, ?, ?, 'active')
+                ON CONFLICT(email) DO UPDATE SET
+                    unsubscribe_token = excluded.unsubscribe_token,
+                    subscribed_at = excluded.subscribed_at,
+                    status = 'active'
+                """,
+                (cleaned_email, token, now_str),
+            )
+            conn.commit()
+
+    def unsubscribe(self, token: str) -> bool:
+        """
+        Marks the subscription associated with the unsubscribe_token as unsubscribed.
+        Returns True if a subscriber was found and updated, False otherwise.
+        """
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE email_subscriptions
+                SET status = 'unsubscribed'
+                WHERE unsubscribe_token = ? AND status = 'active'
+                """,
+                (token,),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def get_active_subscribers(self) -> list[dict[str, Any]]:
+        """
+        Retrieves the list of active subscribers.
+        """
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT email, unsubscribe_token, subscribed_at
+                FROM email_subscriptions
+                WHERE status = 'active'
+                """
+            )
+            rows = cursor.fetchall()
+            return [
+                {
+                    "email": row["email"],
+                    "unsubscribe_token": row["unsubscribe_token"],
+                    "subscribed_at": row["subscribed_at"],
+                }
+                for row in rows
+            ]
+
+    def has_received_email(self, date_str: str, email: str) -> bool:
+        """
+        Checks if the subscriber has already been dispatched the email for the given date.
+        """
+        cleaned_email = email.strip().lower()
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT 1 FROM email_dispatch_log
+                WHERE date = ? AND email = ?
+                """,
+                (date_str, cleaned_email),
+            )
+            row = cursor.fetchone()
+            return row is not None
+
+    def log_individual_dispatch(self, date_str: str, email: str) -> None:
+        """
+        Logs that a user received their daily email for the given date.
+        """
+        from datetime import datetime
+        cleaned_email = email.strip().lower()
+        now_str = datetime.now().isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO email_dispatch_log (date, email, sent_at)
+                VALUES (?, ?, ?)
+                """,
+                (date_str, cleaned_email, now_str),
+            )
+            conn.commit()

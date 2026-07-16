@@ -104,6 +104,131 @@ def get_storage(request: Request) -> Storage:
     return Storage()
 
 
+import re
+import uuid
+
+EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
+
+
+class SubscribeRequest(BaseModel):
+    email: str
+
+
+@app.post("/api/subscribe")
+def subscribe(
+    request: SubscribeRequest,
+    storage: Storage = Depends(get_storage),
+):
+    email = request.email.strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required.")
+    if not EMAIL_REGEX.match(email):
+        raise HTTPException(status_code=400, detail="Invalid email format.")
+
+    token = uuid.uuid4().hex
+    storage.add_subscription(email, token)
+    return {"success": True, "message": "Successfully subscribed."}
+
+
+@app.get("/api/unsubscribe", response_class=HTMLResponse)
+def unsubscribe(
+    token: str = Query(..., description="The unique unsubscribe token"),
+    storage: Storage = Depends(get_storage),
+):
+    success = storage.unsubscribe(token)
+
+    if success:
+        message_title = "Unsubscribed Successfully"
+        message_detail = "You have been unsubscribed from the word. daily digest. We're sorry to see you go!"
+    else:
+        message_title = "Invalid Token"
+        message_detail = "This unsubscribe link is invalid or has already been used."
+
+    html_content = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{message_title} - Word of the Day</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {{
+      --bg-dark: #08080a;
+      --bg-card: rgba(18, 18, 22, 0.65);
+      --border-color: rgba(209, 178, 128, 0.22);
+      --text-primary: #f4f4f5;
+      --text-secondary: #d4d4d8;
+      --text-muted: #71717a;
+      --accent: #d1b280;
+      --accent-rgb: 209, 178, 128;
+    }}
+    body {{
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-primary);
+      margin: 0;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }}
+    .container {{
+      max-width: 480px;
+      width: 90%;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 24px;
+      padding: 3rem;
+      text-align: center;
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+    }}
+    h1 {{
+      font-family: 'Outfit', sans-serif;
+      color: var(--accent);
+      font-size: 1.8rem;
+      margin-top: 0;
+      margin-bottom: 1rem;
+    }}
+    p {{
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+      line-height: 1.6;
+      margin-bottom: 2rem;
+    }}
+    .back-btn {{
+      display: inline-block;
+      background: var(--text-primary);
+      color: var(--bg-dark);
+      text-decoration: none;
+      font-family: 'Outfit', sans-serif;
+      font-weight: 600;
+      font-size: 0.85rem;
+      padding: 0.75rem 1.5rem;
+      border-radius: 9999px;
+      transition: all 0.3s ease;
+    }}
+    .back-btn:hover {{
+      background: var(--accent);
+      box-shadow: 0 0 15px 1px rgba(var(--accent-rgb), 0.35);
+      transform: translateY(-1px);
+    }}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>{message_title}</h1>
+    <p>{message_detail}</p>
+    <a href="/" class="back-btn">Go to Portal</a>
+  </div>
+</body>
+</html>
+"""
+    return HTMLResponse(content=html_content)
+
+
 @app.get("/api/word", response_model=None)
 def get_word(
     date: str | None = Query(

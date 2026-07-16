@@ -128,6 +128,37 @@
       </section>
     </div>
 
+    <!-- Daily Digest Email Subscription -->
+    <section class="lookup-section subscription-section">
+      <div class="glass-card subscription-card" id="subscriptionCard">
+        <div class="card-meta-header">
+          <span class="date-badge">Newsletter</span>
+        </div>
+        <div class="word-header">
+          <div class="word-title-group">
+            <h2 class="word-title" style="font-size: 2.2rem; letter-spacing: -0.03em;">Daily Digest</h2>
+          </div>
+        </div>
+        <p class="definition-box" style="font-size: 0.9rem; margin-bottom: 1.25rem; min-height: unset; line-height: 1.45;">
+          Get the Word of the Day sent straight to your inbox at 6:00 AM daily. Clean, elegant, and advertisement-free.
+        </p>
+        <form id="subscribeForm" novalidate class="subscription-form">
+          <div class="input-group">
+            <input type="email" id="subscriberEmail" name="email" required placeholder="you@example.com" autocomplete="email" aria-label="Email address" aria-describedby="subscribeError">
+            <button type="submit" class="subscribe-btn">
+              <span>Subscribe</span>
+            </button>
+          </div>
+          <div id="subscribeSuccess" class="success-msg" style="display: none;">
+            <span aria-hidden="true">✓</span> Successfully subscribed!
+          </div>
+          <div id="subscribeError" class="error-msg" style="display: none;">
+            <span aria-hidden="true">❌</span> Please enter a valid email address.
+          </div>
+        </form>
+      </div>
+    </section>
+
     <!-- Custom Calendar Date Picker (collapsible) -->
     <section class="lookup-section">
       <div class="calendar-widget glass-card" id="calendarWidget">
