@@ -17,6 +17,14 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+try:
+    import simplemma
+
+    HAS_SIMPLEMMA = True
+except ImportError:
+    HAS_SIMPLEMMA = False
+
+
 @dataclass(frozen=True)
 class WordCandidate:
     """
@@ -65,7 +73,11 @@ class WordOfTheDayPipeline:
         self.dictionary_client = dictionary_client or DictionaryClient(storage=storage)
         self.scorer = scorer or ZipfScorer()
         self.storage = storage
-        self.use_lemmatization = use_lemmatization
+        if use_lemmatization and not HAS_SIMPLEMMA:
+            logger.warning("simplemma is not installed. Skipping lemmatization.")
+            self.use_lemmatization = False
+        else:
+            self.use_lemmatization = use_lemmatization
         logger.info(
             f"Initialized WordOfTheDayPipeline (lemmatization={'enabled' if self.use_lemmatization else 'disabled'})."
         )
@@ -116,33 +128,22 @@ class WordOfTheDayPipeline:
         raw_words = text.lower().split()
         clean_pattern = r"[^a-zA-Z\-'’]"
         processed_words = set()
-        raw_cleaned_unique = set()
-
-        simplemma_lib = None
-        if self.use_lemmatization:
-            try:
-                import simplemma as simplemma_lib
-            except ImportError:
-                logger.warning("simplemma is not installed. Skipping lemmatization.")
-                self.use_lemmatization = False
+        raw_cleaned_unique: set[str] = set()
 
         for word in raw_words:
             cleaned = re.sub(clean_pattern, "", word)
             # Drop empty strings or single leftover hyphens/apostrophes
-            if (
-                cleaned
-                and re.match(r"^[a-z\-'’]+$", cleaned)
-            ):
-                if self.use_lemmatization and simplemma_lib is not None:
+            if cleaned and re.match(r"^[a-z\-'’]+$", cleaned):
+                if self.use_lemmatization:
                     raw_cleaned_unique.add(cleaned)
-                    lemma = simplemma_lib.lemmatize(cleaned, lang="en")
+                    lemma = simplemma.lemmatize(cleaned, lang="en")
                     if lemma not in self.stop_words:
                         processed_words.add(lemma)
                 else:
                     if cleaned not in self.stop_words:
                         processed_words.add(cleaned)
 
-        if self.use_lemmatization and simplemma_lib is not None:
+        if self.use_lemmatization:
             logger.info(
                 f"Lemmatization completed: reduced {len(raw_cleaned_unique)} unique cleaned words "
                 f"to {len(processed_words)} unique lemmas (excluding stop words)."
@@ -177,7 +178,7 @@ class WordOfTheDayPipeline:
                 scores = self.scorer.score_batch(filtered_words)
             else:
                 scores = [self.scorer.score(word) for word in filtered_words]
-            scored = list(zip(filtered_words, scores))
+            scored = list(zip(filtered_words, scores, strict=False))
         else:
             scored = []
 
@@ -220,7 +221,9 @@ class WordOfTheDayPipeline:
                     word, storage=self.storage
                 )
             else:
-                is_valid, info, origin = self.dictionary_client.get_word_definition(word)
+                is_valid, info, origin = self.dictionary_client.get_word_definition(
+                    word
+                )
 
             if is_valid:
                 # If using standard ZipfScorer, the score *is* the zipf score.

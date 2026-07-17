@@ -659,13 +659,8 @@ async function initEmbeddingVisual() {
     return;
   }
 
-  canvas.addEventListener('mousemove', (e) => {
-    if (embeddingPoints.length === 0) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-
+  // Helper: Find closest point within threshold
+  function getClosestPoint(mx, my, threshold) {
     let closestPoint = null;
     let minDistance = Infinity;
 
@@ -680,44 +675,55 @@ async function initEmbeddingVisual() {
       }
     });
 
-    const hoverThreshold = 10;
-    if (minDistance < hoverThreshold && closestPoint) {
-      if (hoveredPoint !== closestPoint) {
-        hoveredPoint = closestPoint;
+    return minDistance < threshold ? closestPoint : null;
+  }
+
+  // Helper: Show/update tooltip
+  function updateTooltip(point, mx, my) {
+    const tooltip = elements.embeddingTooltip;
+    if (!tooltip) return;
+
+    tooltip.style.display = 'block';
+    tooltip.style.left = `${mx}px`;
+    tooltip.style.top = `${my + 20}px`;
+
+    const dateStr = point.date ? `<div class="tooltip-date">Selected: ${point.date}</div>` : '';
+    const sourceName = point.source ? point.source.charAt(0).toUpperCase() + point.source.slice(1) : 'History';
+
+    tooltip.innerHTML = `
+      <strong>${point.word}</strong>
+      <span>Cluster ${point.cluster_id + 1} (${sourceName})</span>
+      ${dateStr}
+    `;
+  }
+
+  // Helper: Hide tooltip
+  function hideTooltip() {
+    const tooltip = elements.embeddingTooltip;
+    if (tooltip) {
+      tooltip.style.display = 'none';
+    }
+  }
+
+  canvas.addEventListener('mousemove', (e) => {
+    if (embeddingPoints.length === 0) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
+    const point = getClosestPoint(mx, my, 10);
+    if (point) {
+      if (hoveredPoint !== point) {
+        hoveredPoint = point;
         drawEmbeddingSpace();
-
-        const tooltip = elements.embeddingTooltip;
-        if (tooltip) {
-          tooltip.style.display = 'block';
-          tooltip.style.left = `${mx}px`;
-          tooltip.style.top = `${my + 20}px`;
-
-          const dateStr = closestPoint.date ? `<div class="tooltip-date">Selected: ${closestPoint.date}</div>` : '';
-          const sourceName = closestPoint.source ? closestPoint.source.charAt(0).toUpperCase() + closestPoint.source.slice(1) : 'History';
-
-          tooltip.innerHTML = `
-            <strong>${closestPoint.word}</strong>
-            <span>Cluster ${closestPoint.cluster_id + 1} (${sourceName})</span>
-            ${dateStr}
-          `;
-        }
-
-      } else {
-        const tooltip = elements.embeddingTooltip;
-        if (tooltip) {
-          tooltip.style.left = `${mx}px`;
-          tooltip.style.top = `${my + 20}px`;
-        }
       }
+      updateTooltip(point, mx, my);
     } else {
       if (hoveredPoint !== null) {
         hoveredPoint = null;
         drawEmbeddingSpace();
-
-        const tooltip = elements.embeddingTooltip;
-        if (tooltip) {
-          tooltip.style.display = 'none';
-        }
+        hideTooltip();
       }
     }
   });
@@ -727,15 +733,82 @@ async function initEmbeddingVisual() {
       hoveredPoint = null;
       drawEmbeddingSpace();
     }
-    const tooltip = elements.embeddingTooltip;
-    if (tooltip) {
-      tooltip.style.display = 'none';
-    }
+    hideTooltip();
   });
 
   canvas.addEventListener('click', () => {
     if (hoveredPoint && hoveredPoint.date) {
       loadWord(hoveredPoint.date);
+    }
+  });
+
+  // Touch support for mobile devices
+  let touchStartPos = { x: 0, y: 0 };
+  let touchStartTime = 0;
+  let isTouchActive = false;
+
+  canvas.addEventListener('touchstart', (e) => {
+    if (embeddingPoints.length === 0) return;
+    isTouchActive = true;
+    const rect = canvas.getBoundingClientRect();
+    const touch = e.touches[0];
+    const mx = touch.clientX - rect.left;
+    const my = touch.clientY - rect.top;
+
+    touchStartPos = { x: mx, y: my };
+    touchStartTime = Date.now();
+
+    const point = getClosestPoint(mx, my, 20); // Larger threshold for touch
+    if (point) {
+      hoveredPoint = point;
+      drawEmbeddingSpace();
+      updateTooltip(point, mx, my);
+      e.preventDefault(); // Prevent scrolling when dragging on a point
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchmove', (e) => {
+    if (!isTouchActive || embeddingPoints.length === 0) return;
+    const rect = canvas.getBoundingClientRect();
+    const touch = e.touches[0];
+    const mx = touch.clientX - rect.left;
+    const my = touch.clientY - rect.top;
+
+    const point = getClosestPoint(mx, my, 20);
+    if (point) {
+      if (hoveredPoint !== point) {
+        hoveredPoint = point;
+        drawEmbeddingSpace();
+      }
+      updateTooltip(point, mx, my);
+      e.preventDefault(); // Prevent scrolling when dragging on a point
+    } else {
+      if (hoveredPoint !== null) {
+        hoveredPoint = null;
+        drawEmbeddingSpace();
+        hideTooltip();
+      }
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchend', (e) => {
+    isTouchActive = false;
+    const duration = Date.now() - touchStartTime;
+    const touch = e.changedTouches[0];
+    if (!touch) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = touch.clientX - rect.left;
+    const my = touch.clientY - rect.top;
+
+    const dx = mx - touchStartPos.x;
+    const dy = my - touchStartPos.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist < 10 && duration < 300) {
+      const point = getClosestPoint(mx, my, 20);
+      if (point && point.date) {
+        loadWord(point.date);
+      }
     }
   });
 }

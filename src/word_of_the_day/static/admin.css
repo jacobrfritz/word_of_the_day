@@ -152,6 +152,12 @@
   border-radius: 12px;
   backdrop-filter: blur(12px);
   overflow-x: auto;
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.admin-tabs::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari and Opera */
 }
 
 .tab-btn {
@@ -569,5 +575,15 @@
   .actions-row {
     flex-direction: column;
     gap: 0.75rem;
+  }
+
+  .auth-container {
+    margin: 2rem auto;
+    padding: 1.75rem;
+  }
+
+  .admin-layout {
+    padding: 1.5rem 1rem 4rem;
+    gap: 1.5rem;
   }
 }

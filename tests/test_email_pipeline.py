@@ -5,10 +5,13 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-
 from word_of_the_day.api import app
 from word_of_the_day.config import settings
-from word_of_the_day.email_sender import parse_definition_and_pos, render_word_email, send_email_batch
+from word_of_the_day.email_sender import (
+    parse_definition_and_pos,
+    render_word_email,
+    send_email_batch,
+)
 from word_of_the_day.storage import Storage
 
 
@@ -22,6 +25,7 @@ def temp_storage() -> Generator[Storage, None, None]:
 
     # Register FastAPI dependency override
     from word_of_the_day.api import get_storage
+
     app.dependency_overrides[get_storage] = lambda: storage
 
     yield storage
@@ -79,7 +83,9 @@ def test_render_word_email() -> None:
     assert unsubscribe_url in html
 
 
-def test_api_subscribe_validation_and_success(client: TestClient, temp_storage: Storage) -> None:
+def test_api_subscribe_validation_and_success(
+    client: TestClient, temp_storage: Storage
+) -> None:
     # 1. Invalid email check
     response = client.post("/api/subscribe", json={"email": "invalidemail"})
     assert response.status_code == 400
@@ -96,8 +102,25 @@ def test_api_subscribe_validation_and_success(client: TestClient, temp_storage: 
     assert subscribers[0]["email"] == "test@example.com"
     assert len(subscribers[0]["unsubscribe_token"]) == 32  # UUID hex length
 
+    # 3. Duplicate subscribe check (should fail when already active)
+    response3 = client.post("/api/subscribe", json={"email": "test@example.com"})
+    assert response3.status_code == 400
+    assert "This email is already subscribed" in response3.json()["detail"]
 
-def test_api_unsubscribe_success_and_fail(client: TestClient, temp_storage: Storage) -> None:
+    # 4. Reactivation check (unsubscribe first, then re-subscribe)
+    token = subscribers[0]["unsubscribe_token"]
+    temp_storage.unsubscribe(token)
+    assert len(temp_storage.get_active_subscribers()) == 0
+
+    response4 = client.post("/api/subscribe", json={"email": "test@example.com"})
+    assert response4.status_code == 200
+    assert response4.json()["success"] is True
+    assert len(temp_storage.get_active_subscribers()) == 1
+
+
+def test_api_unsubscribe_success_and_fail(
+    client: TestClient, temp_storage: Storage
+) -> None:
     # Subscribe a user first
     token = "test_uniq_unsubscribe_token_123"
     temp_storage.add_subscription("user@example.com", token)

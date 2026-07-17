@@ -178,3 +178,136 @@ def test_get_embeddings_grid(client: TestClient, temp_storage: Storage) -> None:
     assert 0.0 <= point["x"] <= 1.0
     assert 0.0 <= point["y"] <= 1.0
     assert isinstance(point["cluster_id"], int)
+
+
+def test_future_dates_filtering(client: TestClient, temp_storage: Storage) -> None:
+    from datetime import datetime, timedelta
+
+    today = datetime.now()
+    past_date = (today - timedelta(days=1)).strftime("%Y-%m-%d")
+    today_date = today.strftime("%Y-%m-%d")
+    future_date = (today + timedelta(days=1)).strftime("%Y-%m-%d")
+
+    # Save words for past, today, and future
+    temp_storage.save_word_of_the_day(
+        date=past_date,
+        word="yesterday",
+        definition="past day",
+        source="wikipedia",
+        score=3.0,
+    )
+    temp_storage.save_word_of_the_day(
+        date=today_date,
+        word="today",
+        definition="present day",
+        source="wikipedia",
+        score=3.0,
+    )
+    temp_storage.save_word_of_the_day(
+        date=future_date,
+        word="tomorrow",
+        definition="future day",
+        source="wikipedia",
+        score=3.0,
+    )
+
+    # 1. Test get_word for future date returns 404
+    resp = client.get(f"/api/word?date={future_date}")
+    assert resp.status_code == 404
+    assert "not available for future dates" in resp.json()["detail"].lower()
+
+    # 2. Test get_word for past/today works
+    resp = client.get(f"/api/word?date={past_date}")
+    assert resp.status_code == 200
+    resp = client.get(f"/api/word?date={today_date}")
+    assert resp.status_code == 200
+
+    # 3. Test get_dates excludes future dates
+    resp = client.get("/api/dates")
+    assert resp.status_code == 200
+    dates = resp.json()
+    assert past_date in dates
+    assert today_date in dates
+    assert future_date not in dates
+
+    # 4. Test get_history excludes future dates
+    resp = client.get("/api/history")
+    assert resp.status_code == 200
+    history = resp.json()
+    history_dates = [h["date"] for h in history]
+    assert past_date in history_dates
+    assert today_date in history_dates
+    assert future_date not in history_dates
+
+    # 5. Test get_embeddings_grid excludes future dates
+    # We must save a word that is present in the embeddings CSV/NPZ base cache (e.g. "sagacious")
+    target_word = "sagacious"
+    temp_storage.save_word_of_the_day(
+        date=future_date,
+        word=target_word,
+        definition="wise",
+        source="wikipedia",
+        score=3.0,
+    )
+    resp = client.get("/api/embeddings/grid")
+    assert resp.status_code == 200
+    grid = resp.json()
+    grid_words = [g["word"] for g in grid]
+    assert target_word not in grid_words
+
+
+def test_admin_history_includes_future(
+    client: TestClient, temp_storage: Storage
+) -> None:
+    import hashlib
+    from datetime import datetime, timedelta
+
+    from word_of_the_day.config import settings
+
+    future_date = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+    temp_storage.save_word_of_the_day(
+        date=future_date,
+        word="tomorrow",
+        definition="future day",
+        source="wikipedia",
+        score=3.0,
+    )
+
+    password = settings.admin_password
+    token = hashlib.sha256(password.encode("utf-8")).hexdigest()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Unauthenticated call fails
+    resp = client.get("/api/admin/history")
+    assert resp.status_code == 401
+
+    # Authenticated call succeeds and includes future date
+    resp = client.get("/api/admin/history", headers=headers)
+    assert resp.status_code == 200
+    history = resp.json()
+    history_dates = [h["date"] for h in history]
+    assert future_date in history_dates
+
+
+def test_scheduled_word_for_next_day_not_regenerated(temp_storage: Storage) -> None:
+    from datetime import datetime, timedelta
+    from unittest.mock import patch
+
+    from word_of_the_day import main
+
+    tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+
+    # Pre-save/schedule a word for tomorrow
+    temp_storage.save_word_of_the_day(
+        date=tomorrow,
+        word="existing",
+        definition="already there",
+        source="wikipedia",
+        score=3.0,
+    )
+
+    # Patch run_pipeline to check that it is never called when running in auto mode
+    with patch("word_of_the_day.main.run_pipeline") as mock_run_pipeline:
+        main.run(mode="auto", date=tomorrow, db_path=str(temp_storage.db_path))
+        # It should exit early without running the pipeline
+        mock_run_pipeline.assert_not_called()
