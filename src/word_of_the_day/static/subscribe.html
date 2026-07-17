@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Subscribe - Word of the Day</title>
+
+  <!-- Premium Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;0,800;1,500;1,600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/static/style.css?v=16">
+  <style>
+    /* Additional subtle overrides if any to center the card vertically in the layout if desired */
+    .subscribe-container {
+      margin-top: 2rem;
+    }
+  </style>
+</head>
+<body>
+  <!-- Inline script to prevent theme flashing (FOUC) -->
+  <script>
+    (function() {
+      const savedTheme = localStorage.getItem('vocabulary-theme') || 'gold';
+      if (savedTheme !== 'gold') {
+        document.body.classList.add('theme-' + savedTheme);
+      }
+    })();
+  </script>
+
+  <!-- Ambient background lighting -->
+  <div class="ambient-glow glow-1"></div>
+  <div class="ambient-glow glow-2"></div>
+
+  <!-- Minimalist Navbar -->
+  <header class="navbar">
+    <div class="navbar-container">
+      <div class="navbar-left">
+        <a href="/wotd" class="back-btn" title="Back to Word of the Day portal" onclick="if (window.location.port === '8001') { event.preventDefault(); window.location.href = '/'; }">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+          </svg>
+          <span>Back</span>
+        </a>
+        <a href="/" class="brand">word<span>.</span></a>
+      </div>
+      <div class="theme-switcher">
+        <button class="theme-dot active" data-theme="gold" aria-label="Obsidian Gold Theme" title="Obsidian Gold"></button>
+        <button class="theme-dot" data-theme="nordic" aria-label="Nordic Slate Theme" title="Nordic Slate"></button>
+        <button class="theme-dot" data-theme="forest" aria-label="Forest Moss Theme" title="Forest Moss"></button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Centered Main Content Area -->
+  <main class="centered-layout subscribe-container">
+    <!-- Daily Digest Email Subscription -->
+    <section class="lookup-section subscription-section">
+      <div class="glass-card subscription-card" id="subscriptionCard">
+        <div class="card-meta-header">
+          <span class="date-badge">Newsletter</span>
+        </div>
+        <div class="word-header">
+          <div class="word-title-group">
+            <h2 class="word-title" style="font-size: 2.2rem; letter-spacing: -0.03em;">Word of The Day</h2>
+          </div>
+        </div>
+        <p class="definition-box" style="font-size: 0.9rem; margin-bottom: 1.25rem; min-height: unset; line-height: 1.45;">
+          Get the Word of the Day sent straight to your inbox at 6:00 AM daily. Clean, elegant, and advertisement-free.
+        </p>
+        <form id="subscribeForm" novalidate class="subscription-form">
+          <div class="input-group">
+            <input type="email" id="subscriberEmail" name="email" required placeholder="you@example.com" autocomplete="email" aria-label="Email address" aria-describedby="subscribeError">
+            <button type="submit" class="subscribe-btn">
+              <span>Subscribe</span>
+            </button>
+          </div>
+          <div id="subscribeSuccess" class="success-msg" style="display: none;">
+            <span aria-hidden="true">✓</span> Successfully subscribed!
+          </div>
+          <div id="subscribeError" class="error-msg" style="display: none;">
+            <span aria-hidden="true">❌</span> Please enter a valid email address.
+          </div>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // --- Theme Selection Logic ---
+      const themeDots = document.querySelectorAll('.theme-dot');
+      const savedTheme = localStorage.getItem('vocabulary-theme') || 'gold';
+      setTheme(savedTheme);
+
+      themeDots.forEach(dot => {
+        dot.addEventListener('click', () => {
+          const theme = dot.dataset.theme;
+          setTheme(theme);
+        });
+      });
+
+      function setTheme(theme) {
+        document.body.classList.remove('theme-nordic', 'theme-forest');
+        if (theme !== 'gold') {
+          document.body.classList.add(`theme-${theme}`);
+        }
+        localStorage.setItem('vocabulary-theme', theme);
+        themeDots.forEach(dot => {
+          if (dot.dataset.theme === theme) {
+            dot.classList.add('active');
+          } else {
+            dot.classList.remove('active');
+          }
+        });
+      }
+
+      // --- Subscription Form Handler ---
+      const subscribeForm = document.getElementById('subscribeForm');
+      const subscriberEmail = document.getElementById('subscriberEmail');
+      const subscribeSuccess = document.getElementById('subscribeSuccess');
+      const subscribeError = document.getElementById('subscribeError');
+
+      if (subscribeForm && subscriberEmail) {
+        const syncAria = (el) => {
+          const isInvalid = el.matches(':user-invalid') || el.classList.contains('user-invalid-fallback');
+          el.setAttribute('aria-invalid', isInvalid ? 'true' : 'false');
+        };
+
+        const initValidationFallback = () => {
+          if (window.CSS && window.CSS.supports && window.CSS.supports('selector(:user-invalid)')) return;
+
+          const dirtyState = new WeakMap();
+
+          const updateState = (input) => {
+            const isValid = input.checkValidity();
+            input.classList.toggle('user-invalid-fallback', !isValid);
+            input.classList.toggle('user-valid-fallback', isValid);
+            syncAria(input);
+          };
+
+          const handleEvent = (event) => {
+            const input = event.target;
+            if (input !== subscriberEmail) return;
+
+            if (event.type === 'input' || event.type === 'change') {
+              const state = dirtyState.get(input) || { hasInteracted: false, hasBlurred: false };
+              state.hasInteracted = true;
+              dirtyState.set(input, state);
+              if (state.hasBlurred) {
+                updateState(input);
+              }
+            } else if (event.type === 'blur') {
+              const state = dirtyState.get(input) || { hasInteracted: false, hasBlurred: false };
+              state.hasBlurred = true;
+              dirtyState.set(input, state);
+              if (state.hasInteracted) {
+                updateState(input);
+              }
+            }
+          };
+
+          subscribeForm.addEventListener('blur', handleEvent, true);
+          subscribeForm.addEventListener('input', handleEvent);
+          subscribeForm.addEventListener('change', handleEvent);
+        };
+
+        initValidationFallback();
+
+        subscriberEmail.addEventListener('blur', () => syncAria(subscriberEmail));
+        subscriberEmail.addEventListener('input', () => {
+          subscribeError.style.display = 'none';
+          subscriberEmail.classList.remove('user-invalid-fallback');
+          subscriberEmail.removeAttribute('aria-invalid');
+        });
+
+        subscribeForm.addEventListener('submit', async (e) => {
+          e.preventDefault();
+
+          if (!subscribeForm.checkValidity()) {
+            subscribeError.style.display = 'block';
+            subscribeError.textContent = '❌ Please enter a valid email address.';
+            subscriberEmail.setAttribute('aria-invalid', 'true');
+            subscriberEmail.classList.add('user-invalid-fallback');
+            return;
+          }
+
+          const email = subscriberEmail.value.trim();
+          const inputGroup = subscribeForm.querySelector('.input-group');
+
+          try {
+            const response = await fetch('/api/subscribe', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ email }),
+            });
+
+            const data = await response.json();
+            if (response.ok && data.success) {
+              subscribeSuccess.style.display = 'block';
+              subscribeError.style.display = 'none';
+              if (inputGroup) inputGroup.style.display = 'none';
+            } else {
+              subscribeError.style.display = 'block';
+              subscribeError.textContent = `❌ ${data.detail || data.message || 'Subscription failed. Please try again.'}`;
+            }
+          } catch (err) {
+            subscribeError.style.display = 'block';
+            subscribeError.textContent = '❌ Network error. Please try again later.';
+            console.error('Subscription error:', err);
+          }
+        });
+      }
+    });
+  </script>
+</body>
+</html>

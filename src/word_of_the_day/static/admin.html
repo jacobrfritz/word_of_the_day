@@ -13,7 +13,17 @@
   <link rel="stylesheet" href="/static/style.css?v=16">
   <link rel="stylesheet" href="/static/admin.css?v=2">
 </head>
-<body class="theme-gold">
+<body>
+  <!-- Inline script to prevent theme flashing (FOUC) -->
+  <script>
+    (function() {
+      const savedTheme = localStorage.getItem('vocabulary-theme') || 'gold';
+      if (savedTheme !== 'gold') {
+        document.body.classList.add('theme-' + savedTheme);
+      }
+    })();
+  </script>
+
   <!-- Ambient background lighting -->
   <div class="ambient-glow glow-1"></div>
   <div class="ambient-glow glow-2"></div>
@@ -22,7 +32,7 @@
   <header class="navbar">
     <div class="navbar-container">
       <div class="navbar-left">
-        <a href="/" class="back-btn" title="Back to main page" onclick="if (window.location.port === '8001') { event.preventDefault(); window.location.href = window.location.protocol + '//' + window.location.hostname + (window.location.protocol === 'https:' ? '' : ':80'); }">
+        <a href="/wotd" class="back-btn" title="Back to Word of the Day portal" onclick="if (window.location.port === '8001') { event.preventDefault(); window.location.href = '/'; }">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="19" y1="12" x2="5" y2="12"></line>
             <polyline points="12 19 5 12 12 5"></polyline>

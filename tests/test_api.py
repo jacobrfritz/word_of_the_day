@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+
 from word_of_the_day.api import app
 from word_of_the_day.storage import Storage
 
@@ -178,3 +179,47 @@ def test_get_embeddings_grid(client: TestClient, temp_storage: Storage) -> None:
     assert 0.0 <= point["x"] <= 1.0
     assert 0.0 <= point["y"] <= 1.0
     assert isinstance(point["cluster_id"], int)
+
+
+def test_serve_html_subscribe(client: TestClient) -> None:
+    # Verify GET /subscribe serves the subscription HTML page
+    response = client.get("/subscribe")
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    assert "Subscribe - Word of the Day" in response.text
+    assert "Daily Digest" in response.text
+
+
+def test_api_subscribe_and_unsubscribe(client: TestClient, temp_storage: Storage) -> None:
+    # 1. Test POST /api/subscribe with invalid email
+    response = client.post("/api/subscribe", json={"email": "invalid-email"})
+    assert response.status_code == 400
+    assert "Invalid email format" in response.json()["detail"]
+
+    # 2. Test POST /api/subscribe with valid email
+    response = client.post("/api/subscribe", json={"email": "test@example.com"})
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+
+    # Check that subscription is stored in DB
+    subscriptions = temp_storage.get_active_subscribers()
+    assert len(subscriptions) == 1
+    assert subscriptions[0]["email"] == "test@example.com"
+    token = subscriptions[0]["unsubscribe_token"]
+    assert token is not None
+
+    # 3. Test GET /api/unsubscribe with valid token
+    response = client.get(f"/api/unsubscribe?token={token}")
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    assert "Unsubscribed Successfully" in response.text
+
+    # Check that it's no longer subscribed
+    subscriptions = temp_storage.get_active_subscribers()
+    assert len(subscriptions) == 0
+
+    # 4. Test GET /api/unsubscribe with invalid token
+    response = client.get("/api/unsubscribe?token=nonexistent_token")
+    assert response.status_code == 200
+    assert "Invalid Token" in response.text
+

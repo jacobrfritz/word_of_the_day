@@ -1,4 +1,6 @@
 # src/word_of_the_day/api.py
+import re
+import uuid
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -102,10 +104,6 @@ def get_storage(request: Request) -> Storage:
     if isinstance(storage, Storage):
         return storage
     return Storage()
-
-
-import re
-import uuid
 
 EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
 
@@ -536,6 +534,28 @@ def read_root() -> HTMLResponse:
         logger.error(f"Failed to read static HTML: {e}")
         return HTMLResponse(
             content="<h1>Error loading Word of the Day Portal UI</h1>", status_code=500
+        )
+
+
+@app.get("/subscribe", response_class=HTMLResponse)
+def read_subscribe() -> HTMLResponse:
+    """
+    Serves the beautiful glassmorphic Word of the Day subscription page.
+    """
+    html_path = Path(__file__).parent / "static" / "subscribe.html"
+    if not html_path.exists():
+        logger.error(f"Static subscribe HTML file not found at: {html_path}")
+        return HTMLResponse(
+            content="<h1>Subscription UI not found</h1>", status_code=404
+        )
+
+    try:
+        content = html_path.read_text(encoding="utf-8")
+        return HTMLResponse(content=content)
+    except Exception as e:
+        logger.error(f"Failed to read subscribe static HTML: {e}")
+        return HTMLResponse(
+            content="<h1>Error loading Subscription UI</h1>", status_code=500
         )
 
 

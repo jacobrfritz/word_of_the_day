@@ -295,6 +295,25 @@ CACHE_NPZ_PATH=/app/db/word_of_the_day_embeddings.npz
      word-of-the-day --mode auto
    ```
 
+### Multi-Platform Builds (Docker Buildx)
+
+To build and push a multi-platform image (supporting both `linux/amd64` and `linux/arm64` via a Docker manifest list) from your Mac:
+
+1. **Create and Use a Builder Instance** (only needed once):
+   ```bash
+   docker buildx create --name wotd-builder --use
+   docker buildx inspect --bootstrap
+   ```
+
+2. **Build and Push the Image**:
+   Multi-platform builds typically require pushing directly to a remote registry (e.g., Docker Hub or GitHub Container Registry) since the default local Docker daemon cannot store multi-platform images in its legacy image store:
+   ```bash
+   docker buildx build \
+     --platform linux/amd64,linux/arm64 \
+     -t <your-registry-username>/word-of-the-day:latest \
+     --push .
+   ```
+
 ---
 
 ## Admin Dashboard
