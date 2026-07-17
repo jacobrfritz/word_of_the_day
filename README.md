@@ -247,7 +247,7 @@ The application is containerized with production-grade security defaults:
 
 ### Running with Docker Compose (Recommended)
 
-Starts the FastAPI server with a persistent named volume for the SQLite database, embeddings, and seed CSV:
+Starts the FastAPI server with a host bind mount (mapping the project root) for the SQLite database, embeddings, and seed CSV:
 
 ```bash
 docker compose up -d
@@ -255,7 +255,7 @@ docker compose up -d
 
 The portal will be available at [http://localhost:8000](http://localhost:8000) and the admin dashboard at [http://localhost:8000/admin](http://localhost:8000/admin).
 
-The named volume `wotd-db` is mounted at `/app/db` inside the container. The environment in `docker-compose.yml` sets the database and seed paths to this volume:
+The host project root directory is bind mounted to `/app/db` inside the container. The environment in `docker-compose.yml` sets the database and seed paths to this directory:
 ```
 DB_PATH=/app/db/word_of_the_day.db
 SEED_CSV_PATH=/app/db/word_of_the_day_embeddings.csv
@@ -271,16 +271,16 @@ CACHE_NPZ_PATH=/app/db/word_of_the_day_embeddings.npz
 
 2. **Run the API Server**
    ```bash
-   docker run -d \
-     -p 8000:8000 \
-     --name wotd-api \
-     -v wotd-db:/app/db \
-     -v $(pwd)/logs:/app/logs \
-     -e DB_PATH=/app/db/word_of_the_day.db \
-     -e SEED_CSV_PATH=/app/db/word_of_the_day_embeddings.csv \
-     -e CACHE_NPZ_PATH=/app/db/word_of_the_day_embeddings.npz \
-     --env-file .env \
-     word-of-the-day
+    docker run -d \
+      -p 8000:8000 \
+      --name wotd-api \
+      -v $(pwd):/app/db \
+      -v $(pwd)/logs:/app/logs \
+      -e DB_PATH=/app/db/word_of_the_day.db \
+      -e SEED_CSV_PATH=/app/db/word_of_the_day_embeddings.csv \
+      -e CACHE_NPZ_PATH=/app/db/word_of_the_day_embeddings.npz \
+      --env-file .env \
+      word-of-the-day
    ```
 
 3. **Run One-off CLI Pipeline Modes**
@@ -288,11 +288,11 @@ CACHE_NPZ_PATH=/app/db/word_of_the_day_embeddings.npz
    # List candidates
    docker run --rm word-of-the-day --mode list
 
-   # Auto-select today's word
-   docker run --rm \
-     -v wotd-db:/app/db \
-     -e DB_PATH=/app/db/word_of_the_day.db \
-     word-of-the-day --mode auto
+    # Auto-select today's word
+    docker run --rm \
+      -v $(pwd):/app/db \
+      -e DB_PATH=/app/db/word_of_the_day.db \
+      word-of-the-day --mode auto
    ```
 
 ### Multi-Platform Builds (Docker Buildx)
@@ -310,7 +310,7 @@ To build and push a multi-platform image (supporting both `linux/amd64` and `lin
    ```bash
    docker buildx build \
      --platform linux/amd64,linux/arm64 \
-     -t <your-registry-username>/word-of-the-day:latest \
+     -t <your-registry-username>/word_of_the_day:latest \
      --push .
    ```
 

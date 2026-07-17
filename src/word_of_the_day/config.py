@@ -131,6 +131,8 @@ class Settings(BaseSettings):
     smtp_from_name: str = Field(default="word.", validation_alias="SMTP_FROM_NAME")
     smtp_use_tls: bool = Field(default=True, validation_alias="SMTP_USE_TLS")
     smtp_use_ssl: bool = Field(default=False, validation_alias="SMTP_USE_SSL")
+    smtp_max_emails_per_day: int = Field(default=200, validation_alias="SMTP_MAX_EMAILS_PER_DAY")
+    smtp_admin_notification_email: str | None = Field(default=None, validation_alias="SMTP_ADMIN_NOTIFICATION_EMAIL")
     app_base_url: str = Field(default="http://localhost:8000", validation_alias="APP_BASE_URL")
 
     # Admin configuration

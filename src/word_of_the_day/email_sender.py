@@ -22,6 +22,11 @@ from .storage import Storage, WordOfTheDayRecord
 logger = get_logger(__name__)
 
 
+class DailyEmailLimitExceededError(ValueError):
+    """Exception raised when the daily email dispatch limit is reached."""
+    pass
+
+
 def parse_definition_and_pos(definition_str: str | None) -> tuple[str, str]:
     """
     Parses definition and part of speech from the definition string.
@@ -154,8 +159,118 @@ def render_word_email(record: WordOfTheDayRecord, unsubscribe_url: str) -> str:
     return html
 
 
+def render_word_plain_text(record: WordOfTheDayRecord, unsubscribe_url: str) -> str:
+    """
+    Renders the Word of the Day email in plain text format.
+    """
+    word = record["word"].upper()
+    raw_definition = record["definition"]
+    definition, part_of_speech = parse_definition_and_pos(raw_definition)
+    source = record["source"]
+    origin = record.get("origin") or ""
+
+    try:
+        dt = datetime.strptime(record["date"], "%Y-%m-%d")
+        friendly_date = dt.strftime("%A, %B %d, %Y")
+    except ValueError:
+        friendly_date = record["date"]
+
+    extra = record.get("extra_info")
+    if record["score"] is not None:
+        score_val = f"{record['score']:.4f}"
+    elif extra is not None and isinstance(extra.get("zipf_score"), int | float):
+        score_val = f"Zipf: {extra['zipf_score']:.2f}"
+    else:
+        score_val = "-"
+
+    text = f"Word of the Day • {friendly_date}\n\n"
+    text += f"{word} ({part_of_speech})\n"
+    text += f"Definition: {definition}\n\n"
+    if origin.strip() and origin.strip().lower() != "not available":
+        text += f"Etymology & Origin:\n{origin}\n\n"
+    text += f"Discovery Source: {source}\n"
+    text += f"Word Score: {score_val}\n\n"
+    text += f"You are receiving this because you subscribed to the word. daily digest.\n"
+    text += f"Unsubscribe from this list: {unsubscribe_url}\n"
+    return text
+
+
+def send_limit_alert_email(
+    date_str: str,
+    limit: int,
+    smtp_server: smtplib.SMTP | None = None,
+) -> None:
+    """
+    Sends an alert email to the configured administrator when the daily email limit is reached.
+    """
+    admin_email = settings.smtp_admin_notification_email
+    if not admin_email:
+        logger.info("No admin notification email configured. Skipping alert email.")
+        return
+
+    subject = f"[Alert] Daily Email Limit Reached ({date_str})"
+    body = (
+        f"Warning: The daily email dispatch limit of {limit} has been reached "
+        f"for the date {date_str}.\n\n"
+        f"Some subscribers did not receive their daily email.\n"
+        f"To allow more emails to be sent, please increase the SMTP_MAX_EMAILS_PER_DAY "
+        f"value in your configuration/environment variables."
+    )
+
+    if settings.smtp_backend == "console":
+        logger.info(f"[Console Alert Email] Sending alert to {admin_email}: {subject}")
+        project_root = Path(__file__).resolve().parent.parent.parent
+        sent_dir = project_root / "logs" / "sent_emails"
+        sent_dir.mkdir(parents=True, exist_ok=True)
+        alert_file = sent_dir / f"alert_{date_str}_limit_reached.txt"
+        try:
+            alert_file.write_text(f"To: {admin_email}\nSubject: {subject}\n\n{body}", encoding="utf-8")
+            logger.info(f"[Console Alert Email] Saved alert preview to {alert_file}")
+        except Exception as e:
+            logger.error(f"Failed writing console alert email: {e}")
+        return
+
+    logger.info(f"Sending SMTP alert email to {admin_email}...")
+    try:
+        msg = MIMEText(body, "plain")
+        msg["Subject"] = subject
+        msg["From"] = f"{settings.smtp_from_name} <{settings.smtp_from_email}>"
+        msg["To"] = admin_email
+
+        local_server = smtp_server
+        should_close = False
+        if not local_server:
+            if settings.smtp_use_ssl:
+                local_server = smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, timeout=10)
+            else:
+                local_server = smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10)
+
+            local_server.ehlo()
+            if settings.smtp_use_tls and not settings.smtp_use_ssl:
+                local_server.starttls()
+                local_server.ehlo()
+
+            if settings.smtp_username and settings.smtp_password:
+                local_server.login(settings.smtp_username, settings.smtp_password)
+            should_close = True
+
+        local_server.send_message(msg)
+        logger.info(f"Successfully sent daily limit alert email to {admin_email}")
+
+        if should_close and local_server:
+            try:
+                local_server.quit()
+            except Exception:
+                pass
+    except Exception as e:
+        logger.error(f"Failed to send daily limit alert email: {e}", exc_info=True)
+
+
 def send_email_batch(
-    recipients: list[dict[str, Any]], record: WordOfTheDayRecord, storage: Storage
+    recipients: list[dict[str, Any]],
+    record: WordOfTheDayRecord,
+    storage: Storage,
+    force: bool = False,
 ) -> int:
     """
     Sends the Word of the Day email to a list of recipients.
@@ -164,6 +279,9 @@ def send_email_batch(
     subject = f"Word of the Day: {record['word'].lower()}"
     app_base_url = settings.app_base_url.rstrip("/")
     sent_count = 0
+
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    sent_today = storage.get_sent_count_for_day(today_str)
 
     if settings.smtp_backend == "console":
         logger.info("Using console SMTP backend. Generating previews...")
@@ -177,14 +295,24 @@ def send_email_batch(
             token = subscriber["unsubscribe_token"]
             unsubscribe_url = f"{app_base_url}/api/unsubscribe?token={token}"
 
-            html_content = render_word_email(record, unsubscribe_url)
-
             # Prevent double send
-            if storage.has_received_email(record["date"], email):
+            if not force and storage.has_received_email(record["date"], email):
                 logger.debug(
                     f"Subscriber {email} already received daily email. Skipping."
                 )
                 continue
+
+            # Check daily cap
+            if sent_today >= settings.smtp_max_emails_per_day:
+                logger.warning(
+                    f"Daily email limit reached ({settings.smtp_max_emails_per_day}). Stopping console dispatch."
+                )
+                send_limit_alert_email(record["date"], settings.smtp_max_emails_per_day)
+                raise DailyEmailLimitExceededError(
+                    f"Daily email limit of {settings.smtp_max_emails_per_day} reached. Dispatch halted."
+                )
+
+            html_content = render_word_email(record, unsubscribe_url)
 
             # Write HTML email preview to file
             email_hash = hashlib.md5(email.encode("utf-8")).hexdigest()[:8]
@@ -194,6 +322,7 @@ def send_email_batch(
                 logger.info(f"[Console Email] Saved preview to {preview_file}")
                 storage.log_individual_dispatch(record["date"], email)
                 sent_count += 1
+                sent_today += 1
             except Exception as e:
                 logger.error(
                     f"Failed writing console email preview to {preview_file}: {e}"
@@ -231,11 +360,21 @@ def send_email_batch(
             unsubscribe_url = f"{app_base_url}/api/unsubscribe?token={token}"
 
             # Prevent double send
-            if storage.has_received_email(record["date"], email):
+            if not force and storage.has_received_email(record["date"], email):
                 logger.debug(
                     f"Subscriber {email} already received daily email. Skipping."
                 )
                 continue
+
+            # Check daily cap
+            if sent_today >= settings.smtp_max_emails_per_day:
+                logger.warning(
+                    f"Daily email limit reached ({settings.smtp_max_emails_per_day}). Stopping SMTP dispatch."
+                )
+                send_limit_alert_email(record["date"], settings.smtp_max_emails_per_day, smtp_server=server)
+                raise DailyEmailLimitExceededError(
+                    f"Daily email limit of {settings.smtp_max_emails_per_day} reached. Dispatch halted."
+                )
 
             html_content = render_word_email(record, unsubscribe_url)
 
@@ -244,6 +383,17 @@ def send_email_batch(
             msg["Subject"] = subject
             msg["From"] = f"{settings.smtp_from_name} <{settings.smtp_from_email}>"
             msg["To"] = email
+
+            # Add RFC-compliant list unsubscribe and bulk headers
+            msg["List-Unsubscribe"] = f"<{unsubscribe_url}>"
+            msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
+            msg["Precedence"] = "bulk"
+
+            # Attach plain text version first
+            plain_content = render_word_plain_text(record, unsubscribe_url)
+            msg.attach(MIMEText(plain_content, "plain"))
+
+            # Attach HTML version second
             msg.attach(MIMEText(html_content, "html"))
 
             try:
@@ -251,10 +401,13 @@ def send_email_batch(
                 logger.info(f"Successfully sent daily email to {email}")
                 storage.log_individual_dispatch(record["date"], email)
                 sent_count += 1
+                sent_today += 1
             except Exception as e:
                 logger.error(f"Error sending daily email to subscriber {email}: {e}")
 
     except Exception as e:
+        if isinstance(e, DailyEmailLimitExceededError):
+            raise
         logger.error(f"SMTP Connection failure during batch send: {e}", exc_info=True)
     finally:
         if server:
@@ -266,7 +419,7 @@ def send_email_batch(
     return sent_count
 
 
-def send_daily_emails(date_str: str, storage: Storage) -> int:
+def send_daily_emails(date_str: str, storage: Storage, force: bool = False) -> int:
     """
     Coordinates daily email dispatch for a specific date.
     Triggers word generation if missing, fetches active subscribers, and dispatches.
@@ -313,7 +466,7 @@ def send_daily_emails(date_str: str, storage: Storage) -> int:
         return 0
 
     logger.info(f"Found {len(subscribers)} active subscribers. Starting batch...")
-    sent = send_email_batch(subscribers, record, storage)
+    sent = send_email_batch(subscribers, record, storage, force=force)
     logger.info(
         f"Daily email dispatch completed. Sent: {sent}/{len(subscribers)} emails."
     )

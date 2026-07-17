@@ -355,3 +355,63 @@ def test_scheduled_word_for_next_day_not_regenerated(temp_storage: Storage) -> N
         main.run(mode="auto", date=tomorrow, db_path=str(temp_storage.db_path))
         # It should exit early without running the pipeline
         mock_run_pipeline.assert_not_called()
+
+
+def test_admin_send_email(client: TestClient, temp_storage: Storage) -> None:
+    import hashlib
+    from word_of_the_day.config import settings
+
+    # Setup test credentials
+    password = settings.admin_password
+    token = hashlib.sha256(password.encode("utf-8")).hexdigest()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # 1. Unauthenticated request to /api/admin/send-email returns 401
+    resp = client.post("/api/admin/send-email", json={})
+    assert resp.status_code == 401
+
+    # Save original backend and set to console
+    orig_backend = settings.smtp_backend
+    settings.smtp_backend = "console"
+    try:
+        # 2. Authenticated request to /api/admin/send-email returns 404 if no word exists
+        resp = client.post("/api/admin/send-email", json={"date": "2026-07-16"}, headers=headers)
+        assert resp.status_code == 404
+        assert "no word of the day has been selected" in resp.json()["detail"].lower()
+
+        # Save a word of the day for date
+        temp_storage.save_word_of_the_day(
+            date="2026-07-16",
+            word="testing",
+            definition="running tests",
+            source="Manual",
+            score=3.0
+        )
+
+        # Subscribe users
+        temp_storage.add_subscription("sub1@example.com", "token1")
+        temp_storage.add_subscription("sub2@example.com", "token2")
+
+        # 3. Authenticated request sends email to active subscribers
+        resp = client.post("/api/admin/send-email", json={"date": "2026-07-16"}, headers=headers)
+        assert resp.status_code == 200
+        res_json = resp.json()
+        assert res_json["status"] == "success"
+        assert res_json["sent_count"] == 2
+        assert "successfully sent daily email to 2 subscribers" in res_json["message"].lower()
+
+        # Verify they received it
+        assert temp_storage.has_received_email("2026-07-16", "sub1@example.com")
+        assert temp_storage.has_received_email("2026-07-16", "sub2@example.com")
+
+        # 4. Sending again without force should send to 0 subscribers
+        resp = client.post("/api/admin/send-email", json={"date": "2026-07-16"}, headers=headers)
+        assert resp.status_code == 200
+        assert resp.json()["sent_count"] == 0
+
+        # 5. Sending again WITH force should send to 2 subscribers
+        resp = client.post("/api/admin/send-email", json={"date": "2026-07-16", "force": True}, headers=headers)
+        assert resp.status_code == 200
+        assert resp.json()["sent_count"] == 2
+    finally:
+        settings.smtp_backend = orig_backend

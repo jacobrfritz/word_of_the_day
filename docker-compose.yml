@@ -6,7 +6,7 @@ services:
     ports:
       - "8001:8001"
     volumes:
-      - wotd-db:/app/db
+      - .:/app/db
       - ./logs:/app/logs
     env_file:
       - .env
@@ -23,6 +23,3 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-
-volumes:
-  wotd-db:

@@ -20,6 +20,10 @@ const elements = {
   statDbSize: document.getElementById('statDbSize'),
   clearCacheBtn: document.getElementById('clearCacheBtn'),
   refreshStatsBtn: document.getElementById('refreshStatsBtn'),
+  sendEmailBtn: document.getElementById('sendEmailBtn'),
+  sendEmailForce: document.getElementById('sendEmailForce'),
+  emailSuccess: document.getElementById('emailSuccess'),
+  emailError: document.getElementById('emailError'),
 
   // Schedule Form
   scheduleForm: document.getElementById('scheduleForm'),
@@ -423,6 +427,55 @@ function setupEventListeners() {
       }
     }
   });
+
+  // Email Dispatch
+  if (elements.sendEmailBtn) {
+    elements.sendEmailBtn.addEventListener('click', async () => {
+      const force = elements.sendEmailForce ? elements.sendEmailForce.checked : false;
+      let confirmMsg = "Are you sure you want to send today's Word of the Day email to all active subscribers?";
+      if (force) {
+        confirmMsg += "\n\n(This will bypass the duplicate check and send it again to everyone)";
+      }
+      
+      if (confirm(confirmMsg)) {
+        elements.sendEmailBtn.disabled = true;
+        const originalText = elements.sendEmailBtn.textContent;
+        elements.sendEmailBtn.textContent = 'Sending...';
+        if (elements.emailSuccess) elements.emailSuccess.style.display = 'none';
+        if (elements.emailError) elements.emailError.style.display = 'none';
+        
+        try {
+          const response = await fetchAdmin('/api/admin/send-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ force })
+          });
+          
+          const data = await response.json();
+          
+          if (!response.ok) {
+            throw new Error(data.detail || 'Failed to send emails');
+          }
+          
+          if (elements.emailSuccess) {
+            elements.emailSuccess.textContent = data.message;
+            elements.emailSuccess.style.display = 'block';
+            setTimeout(() => {
+              elements.emailSuccess.style.display = 'none';
+            }, 6000);
+          }
+        } catch (err) {
+          if (elements.emailError) {
+            elements.emailError.textContent = `Error: ${err.message}`;
+            elements.emailError.style.display = 'block';
+          }
+        } finally {
+          elements.sendEmailBtn.disabled = false;
+          elements.sendEmailBtn.textContent = originalText;
+        }
+      }
+    });
+  }
 
   // Custom Form Submission
   elements.scheduleForm.addEventListener('submit', async (e) => {

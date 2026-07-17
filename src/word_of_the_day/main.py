@@ -610,9 +610,13 @@ def run(
         return
 
     if mode == "send-emails":
-        from .email_sender import send_daily_emails
-
-        send_daily_emails(date_str=date, storage=storage)
+        import sys
+        from .email_sender import send_daily_emails, DailyEmailLimitExceededError
+        try:
+            send_daily_emails(date_str=date, storage=storage)
+        except DailyEmailLimitExceededError as e:
+            logger.error(f"Daily email limit exceeded: {e}")
+            sys.exit(1)
         return
 
     if mode == "set":

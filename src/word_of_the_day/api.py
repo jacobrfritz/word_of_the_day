@@ -806,6 +806,58 @@ def admin_clear_cache(
     return {"status": "success", "message": "Dictionary cache cleared."}
 
 
+class SendEmailRequest(BaseModel):
+    date: str | None = None
+    force: bool | None = False
+
+
+@app.post("/api/admin/send-email")
+def admin_send_email(
+    payload: SendEmailRequest,
+    storage: Storage = Depends(get_storage),
+    _: bool = Depends(verify_admin),
+) -> dict[str, Any]:
+    from .email_sender import send_daily_emails, DailyEmailLimitExceededError
+
+    date_str = payload.date or datetime.now().strftime("%Y-%m-%d")
+
+    # Validate date string format
+    try:
+        datetime.strptime(date_str, "%Y-%m-%d")
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400, detail="Invalid date format. Expected YYYY-MM-DD."
+        ) from e
+
+    # Check if a word of the day exists for that date
+    record = storage.get_word_of_the_day(date_str)
+    if not record:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No Word of the Day has been selected for date {date_str}. Please select or generate a word first.",
+        )
+
+    try:
+        sent_count = send_daily_emails(
+            date_str, storage, force=payload.force or False
+        )
+        return {
+            "status": "success",
+            "message": f"Successfully sent daily email to {sent_count} subscribers.",
+            "sent_count": sent_count,
+        }
+    except DailyEmailLimitExceededError as e:
+        logger.warning(f"Daily email limit exceeded: {e}")
+        raise HTTPException(
+            status_code=429, detail=f"Daily email limit reached: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Failed to send daily emails: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to send emails: {str(e)}"
+        )
+
+
 @app.get("/api/admin/logs")
 def admin_logs(
     lines: int = Query(100, description="Number of tail lines to retrieve"),

@@ -596,6 +596,23 @@ class Storage:
                 for row in rows
             ]
 
+    def get_sent_count_for_day(self, day_str: str) -> int:
+        """
+        Returns the count of emails dispatched on a specific calendar day.
+        Checks the prefix of sent_at timestamp.
+        """
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT COUNT(*) FROM email_dispatch_log
+                WHERE sent_at LIKE ?
+                """,
+                (f"{day_str}%",),
+            )
+            val = cursor.fetchone()
+            return val[0] if val else 0
+
     def has_received_email(self, date_str: str, email: str) -> bool:
         """
         Checks if the subscriber has already been dispatched the email for the given date.

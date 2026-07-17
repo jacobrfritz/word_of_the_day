@@ -105,6 +105,20 @@
             </div>
             <p class="helper-text mt-1">Clearing the dictionary cache forces the selection pipeline to re-fetch word definitions from the Merriam-Webster API.</p>
           </div>
+
+          <div class="db-actions">
+            <h3>Email Utilities</h3>
+            <div class="actions-row" style="align-items: center; flex-wrap: wrap;">
+              <button class="submit-btn" id="sendEmailBtn" style="padding: 0.7rem 1.5rem;">Send Word of the Day Email</button>
+              <label class="checkbox-group" style="padding: 0; display: inline-flex; align-items: center; cursor: pointer; text-transform: none; letter-spacing: normal;">
+                <input type="checkbox" id="sendEmailForce" name="sendEmailForce" style="width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer;">
+                <span style="font-size: 0.95rem; color: var(--text-secondary);">Force Resend</span>
+              </label>
+            </div>
+            <p class="helper-text mt-1">Sends the daily email containing today's Word of the Day to all active subscribers. Check "Force Resend" to send even to subscribers who already received today's email.</p>
+            <div id="emailSuccess" class="alert-message success-message" style="display: none; margin-top: 0.5rem;"></div>
+            <div id="emailError" class="alert-message error-message" style="display: none; margin-top: 0.5rem;"></div>
+          </div>
         </div>
       </div>
 
