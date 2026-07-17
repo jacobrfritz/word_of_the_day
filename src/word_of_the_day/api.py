@@ -105,6 +105,7 @@ def get_storage(request: Request) -> Storage:
         return storage
     return Storage()
 
+
 EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
 
 
@@ -116,12 +117,17 @@ class SubscribeRequest(BaseModel):
 def subscribe(
     request: SubscribeRequest,
     storage: Storage = Depends(get_storage),
-):
+) -> dict[str, Any]:
     email = request.email.strip().lower()
     if not email:
         raise HTTPException(status_code=400, detail="Email is required.")
     if not EMAIL_REGEX.match(email):
         raise HTTPException(status_code=400, detail="Invalid email format.")
+
+    # Check if already subscribed
+    sub = storage.get_subscription(email)
+    if sub and sub["status"] == "active":
+        raise HTTPException(status_code=400, detail="This email is already subscribed.")
 
     token = uuid.uuid4().hex
     storage.add_subscription(email, token)
@@ -132,7 +138,7 @@ def subscribe(
 def unsubscribe(
     token: str = Query(..., description="The unique unsubscribe token"),
     storage: Storage = Depends(get_storage),
-):
+) -> HTMLResponse:
     success = storage.unsubscribe(token)
 
     if success:
@@ -250,6 +256,14 @@ def get_word(
             status_code=400, detail="Invalid date format. Expected YYYY-MM-DD."
         ) from e
 
+    # Future dates are not accessible
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    if date > today_str:
+        raise HTTPException(
+            status_code=404,
+            detail="Word of the Day not available for future dates.",
+        )
+
     record = storage.get_word_of_the_day(date)
     if not record:
         raise HTTPException(
@@ -272,7 +286,7 @@ def get_word(
                         definition=definition,
                         source=record["source"],
                         score=record["score"],
-                       extra_info=record["extra_info"],
+                        extra_info=record["extra_info"],
                         origin=origin,
                         cluster_id=record.get("cluster_id"),
                     )
@@ -297,7 +311,8 @@ def get_dates(storage: Storage = Depends(get_storage)) -> list[str]:
     Used by the frontend calendar to highlight days with data.
     """
     records = storage.get_history(limit=None)
-    return sorted({r["date"] for r in records})
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    return sorted({r["date"] for r in records if r["date"] <= today_str})
 
 
 @app.get("/api/history", response_model=list[WordOfTheDayRecord])
@@ -310,10 +325,14 @@ def get_history(
     """
     Returns historical Word of the Day selections, ordered by date descending.
     """
-    records = storage.get_history(limit=limit)
-    for r in records:
+    records = storage.get_history(limit=None)
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    filtered_records = [r for r in records if r["date"] <= today_str]
+    if limit is not None:
+        filtered_records = filtered_records[:limit]
+    for r in filtered_records:
         r["source"] = map_source_name(r["source"])
-    return records
+    return filtered_records
 
 
 _embeddings_grid_cache: dict[str, dict[str, Any]] | None = None
@@ -446,6 +465,8 @@ def get_embeddings_grid(
 
     # Fetch all history to cross-reference dates
     history = storage.get_history(limit=None)
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    history = [h for h in history if h["date"] <= today_str]
 
     response_data = []
     missing_words = []
@@ -726,6 +747,23 @@ def admin_delete_word(
 
     storage.delete_word_of_the_day(date)
     return {"status": "success", "message": f"Deleted word for {date}"}
+
+
+@app.get("/api/admin/history", response_model=list[WordOfTheDayRecord])
+def get_admin_history(
+    limit: int | None = Query(
+        None, description="Limit the number of history items returned"
+    ),
+    storage: Storage = Depends(get_storage),
+    _: bool = Depends(verify_admin),
+) -> list[WordOfTheDayRecord]:
+    """
+    Returns historical Word of the Day selections including future ones, ordered by date descending.
+    """
+    records = storage.get_history(limit=limit)
+    for r in records:
+        r["source"] = map_source_name(r["source"])
+    return records
 
 
 @app.get("/api/admin/stats")

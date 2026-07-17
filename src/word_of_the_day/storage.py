@@ -506,11 +506,38 @@ class Storage:
             return 0
         return (last_used_id + 1) % optimal_k
 
+    def get_subscription(self, email: str) -> dict[str, Any] | None:
+        """
+        Retrieves subscription details for a given email.
+        """
+        cleaned_email = email.strip().lower()
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT email, unsubscribe_token, subscribed_at, status
+                FROM email_subscriptions
+                WHERE email = ?
+                """,
+                (cleaned_email,),
+            )
+            row = cursor.fetchone()
+            if row:
+                return {
+                    "email": row["email"],
+                    "unsubscribe_token": row["unsubscribe_token"],
+                    "subscribed_at": row["subscribed_at"],
+                    "status": row["status"],
+                }
+            return None
+
     def add_subscription(self, email: str, token: str) -> None:
         """
         Adds a new email subscription or reactivates an existing one.
         """
         from datetime import datetime
+
         cleaned_email = email.strip().lower()
         now_str = datetime.now().isoformat()
         with self._connect() as conn:
@@ -591,6 +618,7 @@ class Storage:
         Logs that a user received their daily email for the given date.
         """
         from datetime import datetime
+
         cleaned_email = email.strip().lower()
         now_str = datetime.now().isoformat()
         with self._connect() as conn:

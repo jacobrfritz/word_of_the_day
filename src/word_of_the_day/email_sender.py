@@ -1,10 +1,9 @@
 # src/word_of_the_day/email_sender.py
 import hashlib
-import os
 import re
 import smtplib
-import sys
 import subprocess
+import sys
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -54,10 +53,11 @@ def render_word_email(record: WordOfTheDayRecord, unsubscribe_url: str) -> str:
         friendly_date = record["date"]
 
     # Parse score
+    extra = record.get("extra_info")
     if record["score"] is not None:
         score_val = f"{record['score']:.4f}"
-    elif record.get("extra_info") and record["extra_info"].get("zipf_score"):
-        score_val = f"Zipf: {record['extra_info']['zipf_score']:.2f}"
+    elif extra is not None and isinstance(extra.get("zipf_score"), int | float):
+        score_val = f"Zipf: {extra['zipf_score']:.2f}"
     else:
         score_val = "-"
 
@@ -135,7 +135,7 @@ def render_word_email(record: WordOfTheDayRecord, unsubscribe_url: str) -> str:
             </td>
           </tr>
         </table>
-        
+
         <!-- Unsubscribe Footer -->
         <table width="100%" max-width="600" border="0" cellspacing="0" cellpadding="0" style="max-width: 600px; text-align: center; margin-top: 24px;">
           <tr>
@@ -181,7 +181,9 @@ def send_email_batch(
 
             # Prevent double send
             if storage.has_received_email(record["date"], email):
-                logger.debug(f"Subscriber {email} already received daily email. Skipping.")
+                logger.debug(
+                    f"Subscriber {email} already received daily email. Skipping."
+                )
                 continue
 
             # Write HTML email preview to file
@@ -193,19 +195,26 @@ def send_email_batch(
                 storage.log_individual_dispatch(record["date"], email)
                 sent_count += 1
             except Exception as e:
-                logger.error(f"Failed writing console email preview to {preview_file}: {e}")
+                logger.error(
+                    f"Failed writing console email preview to {preview_file}: {e}"
+                )
         return sent_count
 
     # SMTP Backend
-    logger.info(f"Connecting to SMTP server at {settings.smtp_host}:{settings.smtp_port}...")
-    server = None
+    logger.info(
+        f"Connecting to SMTP server at {settings.smtp_host}:{settings.smtp_port}..."
+    )
+    server: smtplib.SMTP | None = None
     try:
         # Determine connection method
         if settings.smtp_use_ssl:
-            server = smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, timeout=10)
+            server = smtplib.SMTP_SSL(
+                settings.smtp_host, settings.smtp_port, timeout=10
+            )
         else:
             server = smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10)
 
+        assert server is not None
         server.ehlo()
         if settings.smtp_use_tls and not settings.smtp_use_ssl:
             server.starttls()
@@ -223,7 +232,9 @@ def send_email_batch(
 
             # Prevent double send
             if storage.has_received_email(record["date"], email):
-                logger.debug(f"Subscriber {email} already received daily email. Skipping.")
+                logger.debug(
+                    f"Subscriber {email} already received daily email. Skipping."
+                )
                 continue
 
             html_content = render_word_email(record, unsubscribe_url)
@@ -264,10 +275,20 @@ def send_daily_emails(date_str: str, storage: Storage) -> int:
     record = storage.get_word_of_the_day(date_str)
 
     if not record:
-        logger.warning(f"Word of the Day record not found for {date_str}. Triggering auto pipeline...")
+        logger.warning(
+            f"Word of the Day record not found for {date_str}. Triggering auto pipeline..."
+        )
         try:
             subprocess.run(
-                [sys.executable, "-m", "word_of_the_day.cli", "--mode", "auto", "--date", date_str],
+                [
+                    sys.executable,
+                    "-m",
+                    "word_of_the_day.cli",
+                    "--mode",
+                    "auto",
+                    "--date",
+                    date_str,
+                ],
                 capture_output=True,
                 text=True,
                 check=True,
@@ -275,11 +296,15 @@ def send_daily_emails(date_str: str, storage: Storage) -> int:
             # Re-fetch after generation
             record = storage.get_word_of_the_day(date_str)
         except Exception as e:
-            logger.error(f"Failed to automatically generate Word of the Day for {date_str}: {e}")
+            logger.error(
+                f"Failed to automatically generate Word of the Day for {date_str}: {e}"
+            )
             return 0
 
     if not record:
-        logger.error(f"Cannot dispatch emails: Word of the Day generation failed for {date_str}.")
+        logger.error(
+            f"Cannot dispatch emails: Word of the Day generation failed for {date_str}."
+        )
         return 0
 
     subscribers = storage.get_active_subscribers()
@@ -289,7 +314,9 @@ def send_daily_emails(date_str: str, storage: Storage) -> int:
 
     logger.info(f"Found {len(subscribers)} active subscribers. Starting batch...")
     sent = send_email_batch(subscribers, record, storage)
-    logger.info(f"Daily email dispatch completed. Sent: {sent}/{len(subscribers)} emails.")
+    logger.info(
+        f"Daily email dispatch completed. Sent: {sent}/{len(subscribers)} emails."
+    )
     return sent
 
 
@@ -311,7 +338,9 @@ def check_and_send_daily_emails() -> None:
 
     # Only send emails if current time is past 6:00 AM local time
     if now.hour < 6:
-        logger.debug(f"Current local time ({now.isoformat()}) is before 6:00 AM. Skipping dispatch.")
+        logger.debug(
+            f"Current local time ({now.isoformat()}) is before 6:00 AM. Skipping dispatch."
+        )
         return
 
     storage = Storage()
@@ -320,10 +349,16 @@ def check_and_send_daily_emails() -> None:
         return
 
     # Check if there's any active subscriber who hasn't received the email yet for today
-    pending_subscribers = [s for s in subscribers if not storage.has_received_email(date_str, s["email"])]
+    pending_subscribers = [
+        s for s in subscribers if not storage.has_received_email(date_str, s["email"])
+    ]
     if not pending_subscribers:
-        logger.debug(f"All active subscribers have already received today's email for {date_str}.")
+        logger.debug(
+            f"All active subscribers have already received today's email for {date_str}."
+        )
         return
 
-    logger.info(f"Dispatched email check: pending recipients found for date {date_str}. Launching dispatch...")
+    logger.info(
+        f"Dispatched email check: pending recipients found for date {date_str}. Launching dispatch..."
+    )
     send_daily_emails(date_str, storage)

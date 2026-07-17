@@ -209,7 +209,7 @@ async function loadMetrics() {
 // --- Schedule / Edit Word Tab ---
 async function loadHistory() {
   try {
-    const response = await fetch('/api/history');
+    const response = await fetchAdmin('/api/admin/history');
     if (!response.ok) throw new Error('Failed to load history');
     currentHistory = await response.json();
 
