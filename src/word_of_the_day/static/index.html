@@ -251,7 +251,7 @@
 
             <!-- Node 1: Ingest -->
             <g class="pipeline-node" transform="translate(5, 25)">
-              <title>Ingestion: Fetches raw text corpora from Wikipedia, Project Gutenberg, and Substack.</title>
+              <title>Ingestion: Fetches raw text corpora from Wikipedia, Project Gutenberg, and Substack, alongside cached database words.</title>
               <rect width="110" height="70" rx="16" ry="16" fill="var(--bg-card)" stroke="var(--border-color)" stroke-width="1.5" />
               <svg x="43" y="10" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
@@ -261,32 +261,9 @@
               <text x="55" y="59" text-anchor="middle" class="node-sublabel">Multi-Source</text>
             </g>
 
-            <!-- Node 2: Filter -->
+            <!-- Node 2: Rank -->
             <g class="pipeline-node" transform="translate(146, 25)">
-              <title>Filtering: 365-day reusability check, Database seen-words cache (filtering out known invalid words), POS tagging, and length bounds.</title>
-              <rect width="110" height="70" rx="16" ry="16" fill="var(--bg-card)" stroke="var(--border-color)" stroke-width="1.5" />
-              <svg x="43" y="10" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-              </svg>
-              <text x="55" y="49" text-anchor="middle" class="node-label">Filter</text>
-              <text x="55" y="59" text-anchor="middle" class="node-sublabel">POS &amp; Length</text>
-            </g>
-
-            <!-- Node 3: Validate -->
-            <g class="pipeline-node" transform="translate(287, 25)">
-              <title>Validation: Free Dictionary API checks if the word is valid, retrieving definitions &amp; origins.</title>
-              <rect width="110" height="70" rx="16" ry="16" fill="var(--bg-card)" stroke="var(--border-color)" stroke-width="1.5" />
-              <svg x="43" y="10" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-              </svg>
-              <text x="55" y="49" text-anchor="middle" class="node-label">Validate</text>
-              <text x="55" y="59" text-anchor="middle" class="node-sublabel">Dictionary API</text>
-            </g>
-
-            <!-- Node 4: Rank -->
-            <g class="pipeline-node" transform="translate(428, 25)">
-              <title>Ranking: Candidates are ranked using TF-IDF across documents (or embedded using SentenceTransformer and scored via cosine similarity against the active seed cluster centroid).</title>
+              <title>Ranking: Candidates are filtered by POS &amp; length, then ranked using TF-IDF or seed-target embeddings (daily rotating cluster centroids).</title>
               <rect width="110" height="70" rx="16" ry="16" fill="var(--bg-card)" stroke="var(--border-color)" stroke-width="1.5" />
               <svg x="43" y="10" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="4" y="4" width="16" height="16" rx="2" ry="2" />
@@ -301,12 +278,43 @@
                 <line x1="1" y1="15" x2="4" y2="15" />
               </svg>
               <text x="55" y="49" text-anchor="middle" class="node-label">Rank</text>
-              <text x="55" y="59" text-anchor="middle" class="node-sublabel">TF-IDF / Centroid</text>
+              <text x="55" y="59" text-anchor="middle" class="node-sublabel">Semantic / TF-IDF</text>
+            </g>
+
+            <!-- Node 3: Validate -->
+            <g class="pipeline-node" transform="translate(287, 25)">
+              <title>Validation: Top ranked candidates are lazily checked via the Dictionary API to fetch definitions and etymology.</title>
+              <rect width="110" height="70" rx="16" ry="16" fill="var(--bg-card)" stroke="var(--border-color)" stroke-width="1.5" />
+              <svg x="43" y="10" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+              </svg>
+              <text x="55" y="49" text-anchor="middle" class="node-label">Validate</text>
+              <text x="55" y="59" text-anchor="middle" class="node-sublabel">Lazy API Check</text>
+            </g>
+
+            <!-- Node 4: Select -->
+            <g class="pipeline-node" transform="translate(428, 25)">
+              <title>Selection: The final word is selected from validated candidates using a Softmax probability distribution scaled by temperature.</title>
+              <rect width="110" height="70" rx="16" ry="16" fill="var(--bg-card)" stroke="var(--border-color)" stroke-width="1.5" />
+              <svg x="43" y="10" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="4" y1="21" x2="4" y2="14" />
+                <line x1="4" y1="10" x2="4" y2="3" />
+                <line x1="12" y1="21" x2="12" y2="12" />
+                <line x1="12" y1="8" x2="12" y2="3" />
+                <line x1="20" y1="21" x2="20" y2="16" />
+                <line x1="20" y1="12" x2="20" y2="3" />
+                <line x1="2" y1="14" x2="6" y2="14" />
+                <line x1="10" y1="8" x2="14" y2="8" />
+                <line x1="18" y1="16" x2="22" y2="16" />
+              </svg>
+              <text x="55" y="49" text-anchor="middle" class="node-label">Select</text>
+              <text x="55" y="59" text-anchor="middle" class="node-sublabel">Softmax Selector</text>
             </g>
 
             <!-- Node 5: Deliver -->
             <g class="pipeline-node" transform="translate(569, 25)">
-              <title>Delivery: Best candidate is saved in SQLite and served via FastAPI.</title>
+              <title>Delivery: The selected word is saved in SQLite, sent to subscribers via email, and served via FastAPI.</title>
               <rect width="110" height="70" rx="16" ry="16" fill="var(--bg-card)" stroke="var(--border-color)" stroke-width="1.5" />
               <svg x="43" y="10" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
@@ -315,19 +323,18 @@
                 <line x1="6" y1="18" x2="6.01" y2="18" />
               </svg>
               <text x="55" y="49" text-anchor="middle" class="node-label">Deliver</text>
-              <text x="55" y="59" text-anchor="middle" class="node-sublabel">FastAPI &amp; DB</text>
+              <text x="55" y="59" text-anchor="middle" class="node-sublabel">API, Email &amp; DB</text>
             </g>
           </svg>
         </div>
 
         <div class="pipeline-blog">
           <p>Every day, <span class="brand-inline">word<span>.</span></span> selects a vocabulary word designed to challenge, inspire, or occasionally make you look up its pronunciation three times.</p>
-          <p>The journey begins with <strong>Ingestion</strong>, where a background scheduler fetches raw text corpora from diverse digital channels—ranging from Wikipedia and classic Project Gutenberg novels to Substack feeds.</p>
-          <p>To prevent repeat performances, these raw texts are immediately run through a <strong>365-Day Reusability Check</strong>, instantly filtering out any word that was selected as a word of the day in the past year.</p>
-          <p>Next, candidates face the <strong>Part-of-Speech &amp; Length Gate</strong>. Using NLTK's averaged perceptron tagger, the system extracts only high-utility nouns, adjectives, and verbs, filtering out common filler words and prepositions, while enforcing optional minimum and maximum character length constraints.</p>
-          <p>The survivors are validated via the <strong>Free Dictionary API</strong> to verify they are real English words with actual definitions and etymologies. No made-up jargon allowed.</p>
-          <p>Finally, the remaining candidates enter the <strong>Semantic Ranking Pipeline</strong>. A SentenceTransformer model encodes candidate words. To ensure variety and thematic consistency, our curated seed database is grouped into distinct sub-vocabularies using K-Means clustering (with the optimal number of clusters dynamically determined via the Elbow Method). The pipeline rotates the active target cluster centroid daily, scoring candidates by their cosine similarity to that cluster centroid to sort them by how well they match the day's selected literary and stylistic theme.</p>
-          <p>The highest-ranking candidate is crowned the Word of the Day, saved to our SQLite database, and served via FastAPI to your screen.</p>
+          <p>The journey begins with <strong>Ingestion</strong>, where a background scheduler fetches raw text corpora from diverse digital channels—ranging from Wikipedia and classic Project Gutenberg novels to Substack feeds—alongside previously cached database candidates.</p>
+          <p>Next, candidates undergo <strong>Filter &amp; Rank</strong>. To ensure reusability, a 365-day check filters out recently used selections. The remaining words are lemmatized and checked against a Part-of-Speech and length gate. Survivors are ranked: either via term frequency (TF-IDF) across documents, or using a SentenceTransformer to compute cosine similarity against a daily rotating target cluster centroid (curated via K-Means and the Elbow Method).</p>
+          <p>Highly ranked candidates are then passed to <strong>Validation</strong>. Here, the system lazily queries the dictionary API to verify the word exists and retrieve its definition. Because API calls are rate-limited, validation is done on-demand, stopping the moment we find enough valid words to satisfy our candidate pool limit.</p>
+          <p>Finally, instead of a rigid argmax, the pipeline applies <strong>Softmax Selection</strong> scaled by a tunable temperature parameter. High temperatures distribute selection probability more evenly to foster variety and creativity, while low temperatures collapse the choice deterministically onto the highest-scoring candidate.</p>
+          <p>The chosen word is then saved to the database, delivered via email daily newsletter at 6:00 AM, and served via our FastAPI backend.</p>
         </div>
       </div>
     </div>

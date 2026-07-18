@@ -267,6 +267,7 @@ def test_email_batch_limit_capping_smtp(temp_storage: Storage, monkeypatch: pyte
     monkeypatch.setattr(settings, "smtp_backend", "smtp")
     monkeypatch.setattr(settings, "smtp_use_ssl", False)
     monkeypatch.setattr(settings, "smtp_use_tls", False)
+    monkeypatch.setattr(settings, "smtp_admin_notification_email", None)
 
     # Subscribe two users
     temp_storage.add_subscription("smtp1@example.com", "token_smtp1")

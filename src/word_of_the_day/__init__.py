@@ -10,6 +10,12 @@ from .scorers import (
     WordScorer,
     ZipfScorer,
 )
+from .selectors import (
+    HighestScoreSelector,
+    ScoredWord,
+    TemperatureSoftmaxSelector,
+    WordSelector,
+)
 from .storage import Storage, WordOfTheDayRecord
 
 __all__ = [
@@ -26,4 +32,8 @@ __all__ = [
     "CompositeScorer",
     "Storage",
     "WordOfTheDayRecord",
+    "ScoredWord",
+    "WordSelector",
+    "HighestScoreSelector",
+    "TemperatureSoftmaxSelector",
 ]

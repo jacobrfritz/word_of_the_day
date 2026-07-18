@@ -700,7 +700,7 @@ def admin_save_word(
         try:
             with DictionaryClient(storage=storage) as dict_client:
                 is_valid, resolved_def, resolved_origin = (
-                    dict_client.get_word_definition(word_clean)
+                    dict_client.get_word_definition(word_clean, source=source)
                 )
                 if not is_valid:
                     raise HTTPException(
@@ -960,7 +960,8 @@ def admin_explore(
 
         # Retrieve previously validated words from database cache and score them
         db_records = storage.get_all_valid_cached_words()
-        db_words = {r["word"].lower() for r in db_records}
+        db_word_to_source = {r["word"].lower(): r["source"] for r in db_records}
+        db_words = set(db_word_to_source.keys())
         db_reusable = {w for w in db_words if is_reusable_cb(w)}
         db_scored = pipeline.score_and_filter(
             db_reusable,
@@ -968,7 +969,8 @@ def admin_explore(
             max_score=max_val_score,
         )
         for word, score in db_scored:
-            all_scored.append(("Database", word, score))
+            db_source = db_word_to_source.get(word.lower()) or "Database"
+            all_scored.append((f"db:{db_source}", word, score))
 
         seen = {}
         for source_name, word, score in all_scored:
@@ -977,9 +979,14 @@ def admin_explore(
                 seen[word_lower] = (source_name, score)
             else:
                 existing_source, existing_score = seen[word_lower]
-                if existing_source == "Database" and source_name != "Database":
+                existing_is_db = existing_source.startswith("db:")
+                current_is_db = source_name.startswith("db:")
+
+                if existing_is_db and not current_is_db:
                     seen[word_lower] = (source_name, score)
-                elif source_name != "Database" and existing_source != "Database":
+                elif not existing_is_db and current_is_db:
+                    pass
+                else:
                     if scorer.higher_is_better and score > existing_score:
                         seen[word_lower] = (source_name, score)
                     elif not scorer.higher_is_better and score < existing_score:
@@ -988,18 +995,19 @@ def admin_explore(
         merged_scored = [(src, w, s) for w, (src, s) in seen.items()]
         merged_scored.sort(key=lambda item: item[2], reverse=scorer.higher_is_better)
 
-        scored_pairs = [(w, s) for _, w, s in merged_scored]
-        validated = pipeline.validate_candidates(scored_pairs, limit=payload.limit or 5)
+        validated = pipeline.validate_candidates(merged_scored, limit=payload.limit or 5)
 
         word_to_source = {w: src for src, w, _ in merged_scored}
         for c in validated:
+            raw_source = word_to_source.get(c.word, "Unknown")
+            final_source = raw_source[3:] if raw_source.startswith("db:") else raw_source
             candidates_result.append(
                 {
                     "word": c.word,
                     "definition": c.definition,
                     "score": c.score if c.score is not None else c.zipf_score,
                     "zipf_score": c.zipf_score,
-                    "source": word_to_source.get(c.word, "Unknown"),
+                    "source": final_source,
                     "origin": c.origin,
                 }
             )

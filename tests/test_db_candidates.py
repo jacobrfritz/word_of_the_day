@@ -38,10 +38,10 @@ def temp_db() -> Path:
 def test_storage_get_all_valid_cached_words(temp_db: Path) -> None:
     storage = Storage(db_path=temp_db, bootstrap=False)
 
-    # Cache some valid and invalid words
-    storage.cache_definition("ephemeral", True, "lasting a short time", "Greek")
-    storage.cache_definition("invalidword", False, "Not found", None)
-    storage.cache_definition("serendipity", True, "happy chance", "Persian")
+    # Cache some valid and invalid words with/without source
+    storage.cache_definition("ephemeral", True, "lasting a short time", "Greek", source="Wikipedia")
+    storage.cache_definition("invalidword", False, "Not found", None, source="Poetry DB")
+    storage.cache_definition("serendipity", True, "happy chance", "Persian")  # NULL source for backward compatibility
 
     valid_cached = storage.get_all_valid_cached_words()
     # Should only return valid words
@@ -49,10 +49,14 @@ def test_storage_get_all_valid_cached_words(temp_db: Path) -> None:
     words = {w["word"] for w in valid_cached}
     assert words == {"ephemeral", "serendipity"}
 
-    # Verify keys
+    # Verify keys and sources
     ephemeral_record = next(r for r in valid_cached if r["word"] == "ephemeral")
     assert ephemeral_record["definition"] == "lasting a short time"
     assert ephemeral_record["origin"] == "Greek"
+    assert ephemeral_record["source"] == "Wikipedia"
+
+    serendipity_record = next(r for r in valid_cached if r["word"] == "serendipity")
+    assert serendipity_record["source"] is None
 
 
 @patch("word_of_the_day.generator.WordSourceGenerator")
@@ -63,7 +67,7 @@ def test_run_pipeline_draws_from_database(
 ) -> None:
     # Set up DB cache
     storage = Storage(db_path=temp_db, bootstrap=False)
-    storage.cache_definition("serendipity", True, "happy chance", "Persian")
+    storage.cache_definition("serendipity", True, "happy chance", "Persian", source="Classic Poetry")
 
     # Mock generator to return no new text
     mock_generator = MagicMock()
@@ -82,7 +86,7 @@ def test_run_pipeline_draws_from_database(
     )
 
     captured = capsys.readouterr()
-    assert "Source: Database" in captured.out
+    assert "Source: Classic Poetry" in captured.out
     assert "SERENDIPITY" in captured.out
     assert "happy chance" in captured.out
 
@@ -94,7 +98,7 @@ def test_api_explore_draws_from_database(
 ) -> None:
     # Set up DB cache
     storage = Storage(db_path=temp_db, bootstrap=False)
-    storage.cache_definition("serendipity", True, "happy chance", "Persian")
+    storage.cache_definition("serendipity", True, "happy chance", "Persian", source="Classic Poetry")
 
     # Mock generator to return no new text
     mock_generator = MagicMock()
@@ -126,7 +130,7 @@ def test_api_explore_draws_from_database(
         candidates = data["candidates"]
         assert len(candidates) == 1
         assert candidates[0]["word"] == "serendipity"
-        assert candidates[0]["source"] == "Database"
+        assert candidates[0]["source"] == "Classic Poetry"
         assert candidates[0]["definition"] == "happy chance"
         assert candidates[0]["origin"] == "Persian"
     finally:

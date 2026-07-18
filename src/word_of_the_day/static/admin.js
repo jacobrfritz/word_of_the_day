@@ -324,15 +324,14 @@ async function handleExplore(e) {
       const card = document.createElement('div');
       card.className = 'candidate-card glass-card';
 
-      const zipfLabel = cand.zipf_score ? `Zipf: ${cand.zipf_score.toFixed(2)}` : '';
       const scoreLabel = cand.score ? `Score: ${cand.score.toFixed(4)}` : '';
-      const badges = [zipfLabel, scoreLabel].filter(Boolean).join(' | ');
+      const badgeSuffix = scoreLabel ? ` (${scoreLabel})` : '';
 
       card.innerHTML = `
         <div class="candidate-header">
           <div class="candidate-title-group">
             <h3 class="candidate-word">${cand.word.toUpperCase()}</h3>
-            <span class="candidate-meta">${cand.source} (${badges})</span>
+            <span class="candidate-meta">${cand.source}${badgeSuffix}</span>
           </div>
           <button class="action-btn select-candidate-btn"
             data-word="${cand.word}"

@@ -12,6 +12,11 @@ from .config import settings
 from .dictionary import DictionaryClient
 from .logger import get_logger
 from .scorers import TFIDFScorer, WordScorer, ZipfScorer
+from .selectors import (
+    HighestScoreSelector,
+    TemperatureSoftmaxSelector,
+    WordSelector,
+)
 from .utils import ensure_nltk_resources
 
 if TYPE_CHECKING:
@@ -55,6 +60,7 @@ class WordOfTheDayPipeline:
         scorer: WordScorer | None = None,
         storage: "Storage | None" = None,
         use_lemmatization: bool = True,
+        selector: WordSelector | None = None,
     ) -> None:
         """
         Initialize the pipeline.
@@ -70,6 +76,7 @@ class WordOfTheDayPipeline:
             storage: An optional Storage instance used to cache dictionary API
                      results. When provided, previously looked-up words are served
                      from the DB, skipping the network call entirely.
+            selector: An optional WordSelector instance to select the final word.
         """
         self.stop_words = self._load_stop_words(stop_words)
         self._external_client = dictionary_client is not None
@@ -83,6 +90,21 @@ class WordOfTheDayPipeline:
             self.use_lemmatization = False
         else:
             self.use_lemmatization = use_lemmatization
+
+        # Initialize WordSelector
+        if selector is None:
+            if settings.selection_strategy == "softmax":
+                self.selector = TemperatureSoftmaxSelector(
+                    temperature=settings.selection_temperature,
+                    higher_is_better=self.scorer.higher_is_better,
+                )
+            else:
+                self.selector = HighestScoreSelector(
+                    higher_is_better=self.scorer.higher_is_better,
+                )
+        else:
+            self.selector = selector
+
         logger.info(
             f"Initialized WordOfTheDayPipeline (lemmatization={'enabled' if self.use_lemmatization else 'disabled'})."
         )
@@ -271,7 +293,7 @@ class WordOfTheDayPipeline:
 
     def validate_candidates(
         self,
-        scored_candidates: list[tuple[str, float]],
+        scored_candidates: list[tuple[str, float]] | list[tuple[str, str, float]],
         limit: int = 1,
     ) -> list[WordCandidate]:
         """
@@ -286,7 +308,7 @@ class WordOfTheDayPipeline:
         skip the network call for words already looked up.
 
         Args:
-            scored_candidates: Words pre-sorted by score, best first.
+            scored_candidates: Words pre-sorted by score (with optional source), best first.
             limit: Maximum number of *valid* words to return. Defaults to 1
                    so callers that only need one word pay for at most one API
                    call (or one cache hit).
@@ -294,19 +316,29 @@ class WordOfTheDayPipeline:
         validated_candidates: list[WordCandidate] = []
         cache_updates = []
 
-        for word, score in scored_candidates:
+        for item in scored_candidates:
             if len(validated_candidates) >= limit:
                 break
 
-            # --- Cache lookup ---
-            if self.storage is not None:
-                is_valid, info, origin = self.dictionary_client.get_word_definition(
-                    word, storage=self.storage
-                )
+            if len(item) == 3:
+                source, word, score = item  # type: ignore
             else:
-                is_valid, info, origin = self.dictionary_client.get_word_definition(
-                    word
-                )
+                word, score = item  # type: ignore
+                source = None
+
+            if source and source.startswith("db:"):
+                source = source[3:]
+
+            # --- Cache lookup ---
+            kwargs = {}
+            if source is not None:
+                kwargs["source"] = source
+            if self.storage is not None:
+                kwargs["storage"] = self.storage
+
+            is_valid, info, origin = self.dictionary_client.get_word_definition(
+                word, **kwargs
+            )
 
             # Record for bulk save
             cache_updates.append({"word": word, "is_valid": is_valid})

@@ -77,6 +77,12 @@ class Settings(BaseSettings):
     max_score: float = Field(default=4.0, validation_alias="MAX_SCORE")
     limit: int = Field(default=3, validation_alias="LIMIT")
     use_embeddings: bool = Field(default=True, validation_alias="USE_EMBEDDINGS")
+    selection_strategy: str = Field(
+        default="softmax", validation_alias="SELECTION_STRATEGY"
+    )
+    selection_temperature: float = Field(
+        default=1.0, validation_alias="SELECTION_TEMPERATURE"
+    )
     use_lemmatization: bool = Field(default=True, validation_alias="USE_LEMMATIZATION")
     pos_filter_nouns: bool = Field(default=True, validation_alias="POS_FILTER_NOUNS")
     pos_filter_adjectives: bool = Field(

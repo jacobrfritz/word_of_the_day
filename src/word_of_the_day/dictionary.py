@@ -118,7 +118,7 @@ class DictionaryClient:
         self.storage = storage
 
     def get_word_definition(
-        self, word: str, storage: Any = None
+        self, word: str, storage: Any = None, source: str | None = None
     ) -> tuple[bool, str, str | None]:
         """Validates a word and retrieves its primary definition and origin,
         utilizing caching if storage is provided.
@@ -129,6 +129,7 @@ class DictionaryClient:
         Args:
             word: The English word to validate.
             storage: Optional Storage client override to cache/look up definitions.
+            source: Optional original datasource from which the word was scraped.
 
         Returns:
             tuple[bool, str, str | None]:
@@ -146,7 +147,10 @@ class DictionaryClient:
         is_valid, info, origin = self._fetch_definition_from_api(word)
 
         if effective_storage is not None:
-            effective_storage.cache_definition(word, is_valid, info, origin)
+            if source is not None:
+                effective_storage.cache_definition(word, is_valid, info, origin, source=source)
+            else:
+                effective_storage.cache_definition(word, is_valid, info, origin)
 
         return is_valid, info, origin
 

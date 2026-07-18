@@ -146,10 +146,18 @@ class Storage:
                     word TEXT PRIMARY KEY,
                     is_valid INTEGER NOT NULL,
                     definition TEXT,
-                    origin TEXT
+                    origin TEXT,
+                    source TEXT
                 )
                 """
             )
+            # Check if source column exists in dictionary_cache for migration
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(dictionary_cache)")
+            columns = [col[1] for col in cursor.fetchall()]
+            if "source" not in columns:
+                conn.execute("ALTER TABLE dictionary_cache ADD COLUMN source TEXT")
+
 
             # Create email_subscriptions table
             conn.execute(
@@ -312,14 +320,14 @@ class Storage:
     def get_all_valid_cached_words(self) -> list[dict[str, Any]]:
         """
         Retrieves all valid words from the dictionary_cache.
-        Returns a list of dictionaries containing keys: word, definition, origin.
+        Returns a list of dictionaries containing keys: word, definition, origin, source.
         """
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT word, definition, origin
+                SELECT word, definition, origin, source
                 FROM dictionary_cache
                 WHERE is_valid = 1
                 """
@@ -330,6 +338,7 @@ class Storage:
                     "word": row["word"],
                     "definition": row["definition"] or "",
                     "origin": row["origin"],
+                    "source": row["source"],
                 }
                 for row in rows
             ]
@@ -340,6 +349,7 @@ class Storage:
         is_valid: bool,
         definition: str,
         origin: str | None,
+        source: str | None = None,
     ) -> None:
         """
         Persists the result of a dictionary API lookup so future pipeline
@@ -349,14 +359,15 @@ class Storage:
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO dictionary_cache (word, is_valid, definition, origin)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO dictionary_cache (word, is_valid, definition, origin, source)
+                VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(word) DO UPDATE SET
                     is_valid   = excluded.is_valid,
                     definition = excluded.definition,
-                    origin     = excluded.origin
+                    origin     = excluded.origin,
+                    source     = COALESCE(excluded.source, dictionary_cache.source)
                 """,
-                (cleaned_word, int(is_valid), definition, origin),
+                (cleaned_word, int(is_valid), definition, origin, source),
             )
             conn.commit()
 
