@@ -296,12 +296,11 @@ def run_pipeline(
                 source_texts["Unknown"] = content
 
         if not content:
-            logger.error("No text corpus was retrieved.")
-            return
-        logger.info(f"Downloaded text corpus ({len(content)} chars).")
+            logger.warning("No text corpus was retrieved. Proceeding with database candidates only.")
+        else:
+            logger.info(f"Downloaded text corpus ({len(content)} chars).")
     except Exception as e:
-        logger.error(f"API/Connector Error: {e}")
-        return
+        logger.warning(f"API/Connector Error: {e}. Proceeding with database candidates only.")
 
     # 2. Extract, score, and validate candidates
     from .pipeline import WordCandidate, WordOfTheDayPipeline
@@ -358,18 +357,36 @@ def run_pipeline(
             for word, score in scored:
                 all_scored.append((source_name, word, score))
 
-        # Deduplicate words across sources (keep highest-scoring occurrence).
+        # Retrieve previously validated words from database cache and score them
+        db_records = storage.get_all_valid_cached_words()
+        db_words = {r["word"].lower() for r in db_records}
+        db_reusable = {w for w in db_words if is_reusable_cb(w)}
+        db_scored = pipeline.score_and_filter(
+            db_reusable,
+            min_score=min_score,
+            max_score=max_score,
+        )
+        if shuffle:
+            import random
+            random.shuffle(db_scored)
+        for word, score in db_scored:
+            all_scored.append(("Database", word, score))
+
+        # Deduplicate words across sources (keep highest-scoring occurrence, prioritizing scraper sources over 'Database').
         seen: dict[str, tuple[str, float]] = {}
         for source_name, word, score in all_scored:
             word_lower = word.lower()
             if word_lower not in seen:
                 seen[word_lower] = (source_name, score)
             else:
-                _, existing_score = seen[word_lower]
-                if scorer.higher_is_better and score > existing_score:
+                existing_source, existing_score = seen[word_lower]
+                if existing_source == "Database" and source_name != "Database":
                     seen[word_lower] = (source_name, score)
-                elif not scorer.higher_is_better and score < existing_score:
-                    seen[word_lower] = (source_name, score)
+                elif source_name != "Database" and existing_source != "Database":
+                    if scorer.higher_is_better and score > existing_score:
+                        seen[word_lower] = (source_name, score)
+                    elif not scorer.higher_is_better and score < existing_score:
+                        seen[word_lower] = (source_name, score)
 
         # Re-sort merged candidates globally, best first.
         merged_scored: list[tuple[str, str, float]] = [

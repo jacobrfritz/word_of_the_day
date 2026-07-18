@@ -280,6 +280,31 @@ class Storage:
             origin = row[2]
             return is_valid, definition, origin
 
+    def get_all_valid_cached_words(self) -> list[dict[str, Any]]:
+        """
+        Retrieves all valid words from the dictionary_cache.
+        Returns a list of dictionaries containing keys: word, definition, origin.
+        """
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT word, definition, origin
+                FROM dictionary_cache
+                WHERE is_valid = 1
+                """
+            )
+            rows = cursor.fetchall()
+            return [
+                {
+                    "word": row["word"],
+                    "definition": row["definition"] or "",
+                    "origin": row["origin"],
+                }
+                for row in rows
+            ]
+
     def cache_definition(
         self,
         word: str,

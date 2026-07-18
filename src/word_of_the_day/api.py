@@ -949,6 +949,21 @@ def admin_explore(
             for word, score in scored:
                 all_scored.append((source_name, word, score))
 
+        min_val_score = payload.min_score or 2.3
+        max_val_score = payload.max_score or 4.0
+
+        # Retrieve previously validated words from database cache and score them
+        db_records = storage.get_all_valid_cached_words()
+        db_words = {r["word"].lower() for r in db_records}
+        db_reusable = {w for w in db_words if is_reusable_cb(w)}
+        db_scored = pipeline.score_and_filter(
+            db_reusable,
+            min_score=min_val_score,
+            max_score=max_val_score,
+        )
+        for word, score in db_scored:
+            all_scored.append(("Database", word, score))
+
         seen = {}
         for source_name, word, score in all_scored:
             word_lower = word.lower()
@@ -956,10 +971,13 @@ def admin_explore(
                 seen[word_lower] = (source_name, score)
             else:
                 existing_source, existing_score = seen[word_lower]
-                if scorer.higher_is_better and score > existing_score:
+                if existing_source == "Database" and source_name != "Database":
                     seen[word_lower] = (source_name, score)
-                elif not scorer.higher_is_better and score < existing_score:
-                    seen[word_lower] = (source_name, score)
+                elif source_name != "Database" and existing_source != "Database":
+                    if scorer.higher_is_better and score > existing_score:
+                        seen[word_lower] = (source_name, score)
+                    elif not scorer.higher_is_better and score < existing_score:
+                        seen[word_lower] = (source_name, score)
 
         merged_scored = [(src, w, s) for w, (src, s) in seen.items()]
         merged_scored.sort(key=lambda item: item[2], reverse=scorer.higher_is_better)
