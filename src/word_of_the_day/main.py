@@ -147,7 +147,7 @@ def get_word_scorer(
     embedding_k: int,
 ) -> "WordScorer":
     """Factory to initialize and return the appropriate WordScorer."""
-    from .scorers import EmbeddingScorer, ZipfScorer
+    from .scorers import EmbeddingScorer, TFIDFScorer
 
     if use_embeddings:
         csv_path = seed_csv_path or "word_of_the_day_embeddings.csv"
@@ -167,9 +167,9 @@ def get_word_scorer(
         except Exception as exc:
             logger.warning(
                 f"Could not initialize EmbeddingScorer: {exc}. "
-                "Falling back to ZipfScorer."
+                "Falling back to TFIDFScorer."
             )
-    return ZipfScorer()
+    return TFIDFScorer()
 
 
 def run_manual_set(
@@ -279,7 +279,8 @@ def run_pipeline(
     from .generator import WordSourceGenerator
 
     logger.info("Fetching text corpus via WordSourceGenerator...")
-    source_texts: dict[str, str] = {}
+    source_docs: dict[str, list[str]] = {}
+    content_len = 0
     try:
         with WordSourceGenerator(connectors) as generator:
             by_connector = generator.fetch_sources_by_connector(
@@ -289,16 +290,17 @@ def run_pipeline(
             if isinstance(by_connector, dict):
                 for conn, texts in by_connector.items():
                     conn_name = conn.connector_name()
-                    source_texts[map_source_name(conn_name)] = "\n\n".join(texts)
-                content = "\n\n".join(source_texts.values())
+                    source_docs[map_source_name(conn_name)] = texts
+                    content_len += sum(len(t) for t in texts)
             else:
                 content = generator.fetch_sources(count=1, ignore_errors=True)
-                source_texts["Unknown"] = content
+                source_docs["Unknown"] = [content] if content else []
+                content_len = len(content) if content else 0
 
-        if not content:
+        if content_len == 0:
             logger.error("No text corpus was retrieved.")
             return
-        logger.info(f"Downloaded text corpus ({len(content)} chars).")
+        logger.info(f"Downloaded text corpus ({content_len} chars across documents).")
     except Exception as e:
         logger.error(f"API/Connector Error: {e}")
         return
@@ -345,11 +347,11 @@ def run_pipeline(
         scorer=scorer, storage=storage, use_lemmatization=use_lemmatization
     ) as pipeline:
         all_scored: list[tuple[str, str, float]] = []  # (source_name, word, score)
-        for source_name, text in source_texts.items():
-            if not text.strip():
+        for source_name, docs in source_docs.items():
+            if not docs:
                 continue
             scored = pipeline.score_candidates(
-                text,
+                docs,
                 min_score=min_score,
                 max_score=max_score,
                 shuffle=shuffle,
@@ -611,7 +613,9 @@ def run(
 
     if mode == "send-emails":
         import sys
-        from .email_sender import send_daily_emails, DailyEmailLimitExceededError
+
+        from .email_sender import DailyEmailLimitExceededError, send_daily_emails
+
         try:
             send_daily_emails(date_str=date, storage=storage)
         except DailyEmailLimitExceededError as e:

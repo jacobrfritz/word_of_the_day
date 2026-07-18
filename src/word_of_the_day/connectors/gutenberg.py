@@ -3,7 +3,7 @@ import random
 import time
 import urllib.error
 from types import TracebackType
-from typing import Self, cast
+from typing import Self
 
 import gutenbergpy.textget
 
@@ -107,12 +107,13 @@ class GutenbergClient(Connector):
                     f"Invalid book ID: {book_id}. Must be an integer or 'random'."
                 ) from exc
 
-    def fetch_text_corpus(self) -> str:
+    def fetch_documents(self) -> list[str]:
         """
-        Downloads a book from Project Gutenberg and strips its headers and footers.
+        Downloads a book from Project Gutenberg and strips its headers and footers,
+        then splits the book text into fixed-length documents (chunks of 5,000 words).
 
         Returns:
-            The cleaned text content of the book.
+            A list of strings, where each string represents a 5,000-word chunk.
         """
         attempt_id = self.book_id
 
@@ -138,6 +139,15 @@ class GutenbergClient(Connector):
                 # with archaic encodings)
                 text = clean_bytes.decode("utf-8", errors="replace")
 
+                # Chunk the book content into 5,000-word segments
+                words = text.split()
+                chunk_size = 5000
+                chunks = []
+                for i in range(0, len(words), chunk_size):
+                    chunk = " ".join(words[i : i + chunk_size])
+                    if chunk.strip():
+                        chunks.append(chunk)
+
                 if self._is_random_discovery:
                     if self._random_type == "classic":
                         self.book_id = random.choice(DEFAULT_CLASSIC_IDS)
@@ -145,7 +155,7 @@ class GutenbergClient(Connector):
                         self.book_id = random.randint(10, 60000)
                     logger.info(f"Updated book ID for next fetch: {self.book_id}")
 
-                return cast(str, text)
+                return chunks
 
             except (
                 urllib.error.HTTPError,

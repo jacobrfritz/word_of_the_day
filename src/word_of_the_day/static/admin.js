@@ -34,8 +34,11 @@ const elements = {
 
   // Explorer
   exploreForm: document.getElementById('exploreForm'),
-  exploreMinScore: document.getElementById('exploreMinScore'),
-  exploreMaxScore: document.getElementById('exploreMaxScore'),
+  exploreMinLength: document.getElementById('exploreMinLength'),
+  exploreMaxLength: document.getElementById('exploreMaxLength'),
+  explorePosNouns: document.getElementById('explorePosNouns'),
+  explorePosAdjectives: document.getElementById('explorePosAdjectives'),
+  explorePosVerbs: document.getElementById('explorePosVerbs'),
   exploreLimit: document.getElementById('exploreLimit'),
   exploreEmbeddings: document.getElementById('exploreEmbeddings'),
   explorerSpinner: document.getElementById('explorerSpinner'),
@@ -290,10 +293,13 @@ async function handleExplore(e) {
 
   const payload = {
     sources,
-    min_score: parseFloat(elements.exploreMinScore.value),
-    max_score: parseFloat(elements.exploreMaxScore.value),
     limit: parseInt(elements.exploreLimit.value, 10),
-    use_embeddings: elements.exploreEmbeddings.value === 'true'
+    use_embeddings: elements.exploreEmbeddings.value === 'true',
+    min_word_length: elements.exploreMinLength.value ? parseInt(elements.exploreMinLength.value, 10) : null,
+    max_word_length: elements.exploreMaxLength.value ? parseInt(elements.exploreMaxLength.value, 10) : null,
+    pos_filter_nouns: elements.explorePosNouns.checked,
+    pos_filter_adjectives: elements.explorePosAdjectives.checked,
+    pos_filter_verbs: elements.explorePosVerbs.checked
   };
 
   try {
@@ -436,27 +442,27 @@ function setupEventListeners() {
       if (force) {
         confirmMsg += "\n\n(This will bypass the duplicate check and send it again to everyone)";
       }
-      
+
       if (confirm(confirmMsg)) {
         elements.sendEmailBtn.disabled = true;
         const originalText = elements.sendEmailBtn.textContent;
         elements.sendEmailBtn.textContent = 'Sending...';
         if (elements.emailSuccess) elements.emailSuccess.style.display = 'none';
         if (elements.emailError) elements.emailError.style.display = 'none';
-        
+
         try {
           const response = await fetchAdmin('/api/admin/send-email', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ force })
           });
-          
+
           const data = await response.json();
-          
+
           if (!response.ok) {
             throw new Error(data.detail || 'Failed to send emails');
           }
-          
+
           if (elements.emailSuccess) {
             elements.emailSuccess.textContent = data.message;
             elements.emailSuccess.style.display = 'block';

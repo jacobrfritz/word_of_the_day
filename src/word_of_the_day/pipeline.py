@@ -5,11 +5,14 @@ from pathlib import Path
 from types import TracebackType
 from typing import TYPE_CHECKING, Self
 
+import nltk
 from wordfreq import zipf_frequency
 
+from .config import settings
 from .dictionary import DictionaryClient
 from .logger import get_logger
-from .scorers import WordScorer, ZipfScorer
+from .scorers import TFIDFScorer, WordScorer, ZipfScorer
+from .utils import ensure_nltk_resources
 
 if TYPE_CHECKING:
     from .storage import Storage
@@ -63,7 +66,7 @@ class WordOfTheDayPipeline:
             dictionary_client: An optional DictionaryClient instance. If not
                                provided, a default DictionaryClient will be created.
             scorer: An optional WordScorer instance to score candidates.
-                    Defaults to ZipfScorer.
+                    Defaults to TFIDFScorer.
             storage: An optional Storage instance used to cache dictionary API
                      results. When provided, previously looked-up words are served
                      from the DB, skipping the network call entirely.
@@ -71,7 +74,9 @@ class WordOfTheDayPipeline:
         self.stop_words = self._load_stop_words(stop_words)
         self._external_client = dictionary_client is not None
         self.dictionary_client = dictionary_client or DictionaryClient(storage=storage)
-        self.scorer = scorer or ZipfScorer()
+        self.scorer = scorer or TFIDFScorer(stop_words=self.stop_words)
+        if isinstance(self.scorer, TFIDFScorer):
+            self.scorer.stop_words = self.stop_words
         self.storage = storage
         if use_lemmatization and not HAS_SIMPLEMMA:
             logger.warning("simplemma is not installed. Skipping lemmatization.")
@@ -155,22 +160,99 @@ class WordOfTheDayPipeline:
 
         return processed_words
 
+    def clean_document(self, text: str) -> str:
+        """
+        Cleans a document by lowercasing, removing punctuation, filtering stop words,
+        and optionally lemmatizing, returning a space-separated string of tokens.
+        """
+        raw_words = text.lower().split()
+        clean_pattern = r"[^a-zA-Z\-'’]"
+        processed_tokens = []
+
+        for word in raw_words:
+            cleaned = re.sub(clean_pattern, "", word)
+            # Drop empty strings or single leftover hyphens/apostrophes
+            if cleaned and re.match(r"^[a-z\-'’]+$", cleaned):
+                if self.use_lemmatization and HAS_SIMPLEMMA:
+                    lemma = simplemma.lemmatize(cleaned, lang="en")
+                    if lemma not in self.stop_words:
+                        processed_tokens.append(lemma)
+                else:
+                    if cleaned not in self.stop_words:
+                        processed_tokens.append(cleaned)
+        return " ".join(processed_tokens)
+
     def score_and_filter(
         self,
         words: set[str],
         min_score: float = 2.3,
         max_score: float = 4.0,
+        min_word_length: int | None = None,
+        max_word_length: int | None = None,
+        pos_filter_nouns: bool | None = None,
+        pos_filter_adjectives: bool | None = None,
+        pos_filter_verbs: bool | None = None,
     ) -> list[tuple[str, float]]:
         """
-        Filters words within the Zipf frequency 'goldilocks' range, scores them
-        using the configured scorer, and sorts them appropriately.
+        Filters words using Part-of-Speech (POS) tagging and length bounds,
+        scores them using the configured scorer, and sorts them appropriately.
         """
-        # Step 1: Pre-filter by Zipf score (goldilocks range) for efficiency
+        if not words:
+            return []
+
+        # Step 1: Pre-filter by POS tagging and word length
+        ensure_nltk_resources()
+        word_list = sorted(words)
+        try:
+            tagged_words = nltk.pos_tag(word_list, tagset="universal")
+        except Exception as e:
+            logger.error(f"POS tagging failed: {e}. Defaulting to empty list.")
+            tagged_words = []
+
+        # Resolve parameters falling back to settings
+        nouns = (
+            pos_filter_nouns
+            if pos_filter_nouns is not None
+            else settings.pos_filter_nouns
+        )
+        adjectives = (
+            pos_filter_adjectives
+            if pos_filter_adjectives is not None
+            else settings.pos_filter_adjectives
+        )
+        verbs = (
+            pos_filter_verbs
+            if pos_filter_verbs is not None
+            else settings.pos_filter_verbs
+        )
+        min_len = (
+            min_word_length if min_word_length is not None else settings.min_word_length
+        )
+        max_len = (
+            max_word_length if max_word_length is not None else settings.max_word_length
+        )
+
+        allowed_tags = set()
+        if nouns:
+            allowed_tags.add("NOUN")
+        if adjectives:
+            allowed_tags.add("ADJ")
+        if verbs:
+            allowed_tags.add("VERB")
+
         filtered_words = []
-        for word in words:
-            z_score = zipf_frequency(word, "en")
-            if min_score < z_score <= max_score:
-                filtered_words.append(word)
+        for word, tag in tagged_words:
+            # Length filter
+            if min_len is not None and len(word) < min_len:
+                continue
+            if max_len is not None and len(word) > max_len:
+                continue
+
+            # POS filter
+            if tag not in allowed_tags:
+                continue
+
+            filtered_words.append(word)
 
         # Step 2: Score remaining words using the injected scorer
         if filtered_words:
@@ -210,6 +292,7 @@ class WordOfTheDayPipeline:
                    call (or one cache hit).
         """
         validated_candidates: list[WordCandidate] = []
+        cache_updates = []
 
         for word, score in scored_candidates:
             if len(validated_candidates) >= limit:
@@ -225,10 +308,13 @@ class WordOfTheDayPipeline:
                     word
                 )
 
+            # Record for bulk save
+            cache_updates.append({"word": word, "is_valid": is_valid})
+
             if is_valid:
                 # If using standard ZipfScorer, the score *is* the zipf score.
-                # Otherwise (e.g. EmbeddingScorer), we fetch the real Zipf score
-                # for display and set the 'score' attribute to the similarity score.
+                # Otherwise (e.g. EmbeddingScorer/TFIDFScorer), we fetch the real Zipf score
+                # for display and set the 'score' attribute to the similarity/TF-IDF score.
                 if isinstance(self.scorer, ZipfScorer):
                     zipf_val = score
                     custom_score = None
@@ -248,38 +334,121 @@ class WordOfTheDayPipeline:
             else:
                 logger.debug(f"Rejected word '{word}' ({score:.2f}): {info}")
 
+        if self.storage is not None and cache_updates:
+            self.storage.bulk_save_seen_words(cache_updates)
+
         return validated_candidates
 
     def score_candidates(
         self,
-        text: str,
+        text: str | list[str],
         min_score: float = 2.3,
         max_score: float = 4.0,
         shuffle: bool = False,
         is_reusable_cb: Callable[[str], bool] | None = None,
+        min_word_length: int | None = None,
+        max_word_length: int | None = None,
+        pos_filter_nouns: bool | None = None,
+        pos_filter_adjectives: bool | None = None,
+        pos_filter_verbs: bool | None = None,
     ) -> list[tuple[str, float]]:
         """
         Phase 1 of the pipeline: extract, filter, and score words from the corpus.
 
-        No dictionary API calls are made here. Returns all scored candidates
-        sorted best-first so the caller can drive validation lazily.
-
-        Args:
-            text: Raw text corpus to mine for candidate words.
-            min_score: Minimum Zipf frequency (exclusive).
-            max_score: Maximum Zipf frequency (inclusive).
-            shuffle: If True, randomise order after scoring (useful for
-                     exploration; disables best-first ordering).
-            is_reusable_cb: Optional callback that returns True if a word is
-                            eligible for selection (e.g. not used in 365 days).
-                            Words that return False are excluded before scoring.
+        Supports both raw text (str) and lists of documents (list[str]).
+        If TFIDFScorer is used, fits on the documents and filters candidates.
         """
-        unique_words = self.clean_text(text)
-        if is_reusable_cb:
-            unique_words = {w for w in unique_words if is_reusable_cb(w)}
-        scored = self.score_and_filter(
-            unique_words, min_score=min_score, max_score=max_score
-        )
+        if isinstance(self.scorer, TFIDFScorer):
+            documents = [text] if isinstance(text, str) else text
+            cleaned_docs = [self.clean_document(doc) for doc in documents]
+            # TFIDFScorer returns list of (word, score)
+            top_scored = self.scorer.get_top_words_with_scores(cleaned_docs, limit=500)
+
+            # Filter by POS and word length
+            ensure_nltk_resources()
+            word_list = sorted([w for w, _ in top_scored])
+            try:
+                tagged_words = nltk.pos_tag(word_list, tagset="universal")
+            except Exception as e:
+                logger.error(f"POS tagging failed: {e}. Defaulting to empty list.")
+                tagged_words = []
+
+            # Resolve parameters falling back to settings
+            nouns = (
+                pos_filter_nouns
+                if pos_filter_nouns is not None
+                else settings.pos_filter_nouns
+            )
+            adjectives = (
+                pos_filter_adjectives
+                if pos_filter_adjectives is not None
+                else settings.pos_filter_adjectives
+            )
+            verbs = (
+                pos_filter_verbs
+                if pos_filter_verbs is not None
+                else settings.pos_filter_verbs
+            )
+            min_len = (
+                min_word_length
+                if min_word_length is not None
+                else settings.min_word_length
+            )
+            max_len = (
+                max_word_length
+                if max_word_length is not None
+                else settings.max_word_length
+            )
+
+            allowed_tags = set()
+            if nouns:
+                allowed_tags.add("NOUN")
+            if adjectives:
+                allowed_tags.add("ADJ")
+            if verbs:
+                allowed_tags.add("VERB")
+
+            valid_words = set()
+            for word, tag in tagged_words:
+                if min_len is not None and len(word) < min_len:
+                    continue
+                if max_len is not None and len(word) > max_len:
+                    continue
+                if tag not in allowed_tags:
+                    continue
+                valid_words.add(word)
+
+            # Compile final scored candidates (preserving sorted TF-IDF order)
+            scored = []
+            for word, score in top_scored:
+                if word not in valid_words:
+                    continue
+                if is_reusable_cb and not is_reusable_cb(word):
+                    continue
+                if self.storage is not None:
+                    cached = self.storage.get_cached_definition(word)
+                    if cached is not None:
+                        is_valid_cached, _, _ = cached
+                        if not is_valid_cached:
+                            # Skip known invalid words
+                            continue
+                scored.append((word, score))
+        else:
+            aggregate_text = "\n\n".join(text) if isinstance(text, list) else text
+            unique_words = self.clean_text(aggregate_text)
+            if is_reusable_cb:
+                unique_words = {w for w in unique_words if is_reusable_cb(w)}
+            scored = self.score_and_filter(
+                unique_words,
+                min_score=min_score,
+                max_score=max_score,
+                min_word_length=min_word_length,
+                max_word_length=max_word_length,
+                pos_filter_nouns=pos_filter_nouns,
+                pos_filter_adjectives=pos_filter_adjectives,
+                pos_filter_verbs=pos_filter_verbs,
+            )
+
         if shuffle:
             import random
 
@@ -288,28 +457,23 @@ class WordOfTheDayPipeline:
 
     def find_candidates(
         self,
-        text: str,
+        text: str | list[str],
         min_score: float = 2.3,
         max_score: float = 4.0,
         limit: int = 1,
         shuffle: bool = False,
         is_reusable_cb: Callable[[str], bool] | None = None,
+        min_word_length: int | None = None,
+        max_word_length: int | None = None,
+        pos_filter_nouns: bool | None = None,
+        pos_filter_adjectives: bool | None = None,
+        pos_filter_verbs: bool | None = None,
     ) -> list[WordCandidate]:
         """
         Convenience wrapper: score the corpus then lazily validate.
 
-        Calls `score_candidates` (no API) then `validate_candidates` (API on
-        demand), stopping as soon as `limit` valid words are found.
-
-        Args:
-            text: Raw text corpus.
-            min_score: Minimum Zipf frequency (exclusive).
-            max_score: Maximum Zipf frequency (inclusive).
-            limit: Maximum number of valid words to return. Defaults to 1 —
-                   callers that only need one word never pay for more than one
-                   API call.
-            shuffle: Randomise candidate order before validation.
-            is_reusable_cb: Optional reusability gate applied before scoring.
+        Calls `score_candidates` then `validate_candidates`, stopping as soon
+        as `limit` valid words are found.
         """
         scored = self.score_candidates(
             text,
@@ -317,6 +481,11 @@ class WordOfTheDayPipeline:
             max_score=max_score,
             shuffle=shuffle,
             is_reusable_cb=is_reusable_cb,
+            min_word_length=min_word_length,
+            max_word_length=max_word_length,
+            pos_filter_nouns=pos_filter_nouns,
+            pos_filter_adjectives=pos_filter_adjectives,
+            pos_filter_verbs=pos_filter_verbs,
         )
         return self.validate_candidates(scored, limit=limit)
 

@@ -2,7 +2,6 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
-
 from word_of_the_day.connectors import (
     Connector,
     NewYorkTimesAPIError,
@@ -43,10 +42,10 @@ def test_nyt_client_initialization() -> None:
 
 @patch("random.randint")
 @patch("random.shuffle")
-def test_fetch_text_corpus_success(
+def test_fetch_documents_success(
     mock_shuffle: MagicMock, mock_randint: MagicMock
 ) -> None:
-    """Verifies that fetch_text_corpus handles a successful JSON response
+    """Verifies that fetch_documents handles a successful JSON response
     with lead_paragraph.
     """
     client = NewYorkTimesClient(api_key="dummy_key", start_year=2020, end_year=2020)
@@ -73,9 +72,9 @@ def test_fetch_text_corpus_success(
 
     client.client.get = MagicMock(return_value=mock_response)
 
-    corpus = client.fetch_text_corpus()
+    corpus = client.fetch_documents()
 
-    assert corpus == "This is a great NYT lead paragraph."
+    assert corpus == ["This is a great NYT lead paragraph."]
     client.client.get.assert_called_once()
     # Check that query parameters were sent correctly
     called_args, called_kwargs = client.client.get.call_args
@@ -88,7 +87,7 @@ def test_fetch_text_corpus_success(
 
 
 @patch("random.randint")
-def test_fetch_text_corpus_abstract_fallback(mock_randint: MagicMock) -> None:
+def test_fetch_documents_abstract_fallback(mock_randint: MagicMock) -> None:
     """Verifies fallback to abstract when lead_paragraph is missing/empty."""
     client = NewYorkTimesClient(api_key="dummy_key", start_year=2020, end_year=2020)
     mock_randint.side_effect = [2020, 6, 0]
@@ -111,13 +110,13 @@ def test_fetch_text_corpus_abstract_fallback(mock_randint: MagicMock) -> None:
 
     client.client.get = MagicMock(return_value=mock_response)
 
-    corpus = client.fetch_text_corpus()
-    assert corpus == "Fall back to this abstract text."
+    corpus = client.fetch_documents()
+    assert corpus == ["Fall back to this abstract text."]
     client.close()
 
 
 @patch("random.randint")
-def test_fetch_text_corpus_snippet_fallback(mock_randint: MagicMock) -> None:
+def test_fetch_documents_snippet_fallback(mock_randint: MagicMock) -> None:
     """Verifies fallback to snippet when lead_paragraph and abstract
     are missing/empty.
     """
@@ -142,13 +141,13 @@ def test_fetch_text_corpus_snippet_fallback(mock_randint: MagicMock) -> None:
 
     client.client.get = MagicMock(return_value=mock_response)
 
-    corpus = client.fetch_text_corpus()
-    assert corpus == "Fall back to this snippet text."
+    corpus = client.fetch_documents()
+    assert corpus == ["Fall back to this snippet text."]
     client.close()
 
 
 @patch("random.randint")
-def test_fetch_text_corpus_empty_docs_retry(mock_randint: MagicMock) -> None:
+def test_fetch_documents_empty_docs_retry(mock_randint: MagicMock) -> None:
     """Verifies that the client retries with a new query if the initial
     response contains no docs.
     """
@@ -179,14 +178,14 @@ def test_fetch_text_corpus_empty_docs_retry(mock_randint: MagicMock) -> None:
         side_effect=[mock_response_empty, mock_response_success]
     )
 
-    corpus = client.fetch_text_corpus()
+    corpus = client.fetch_documents()
 
-    assert corpus == "Success text on second attempt."
+    assert corpus == ["Success text on second attempt."]
     assert client.client.get.call_count == 2
     client.close()
 
 
-def test_fetch_text_corpus_rate_limiting() -> None:
+def test_fetch_documents_rate_limiting() -> None:
     """Verifies that HTTP 429 raises a NewYorkTimesRateLimitError."""
     client = NewYorkTimesClient(api_key="dummy_key", max_retries=1)
 
@@ -197,27 +196,27 @@ def test_fetch_text_corpus_rate_limiting() -> None:
     client.client.get = MagicMock(return_value=mock_response)
 
     with pytest.raises(NewYorkTimesRateLimitError) as exc_info:
-        client.fetch_text_corpus()
+        client.fetch_documents()
 
     assert exc_info.value.retry_after == 30
     assert "Please retry after 30 seconds." in str(exc_info.value)
     client.close()
 
 
-def test_fetch_text_corpus_network_error() -> None:
+def test_fetch_documents_network_error() -> None:
     """Verifies that network/timeout exceptions raise NewYorkTimesNetworkError."""
     client = NewYorkTimesClient(api_key="dummy_key", max_retries=1)
 
     client.client.get = MagicMock(side_effect=httpx.NetworkError("Network down"))
 
     with pytest.raises(NewYorkTimesNetworkError) as exc_info:
-        client.fetch_text_corpus()
+        client.fetch_documents()
 
     assert "Connection failed after 1 attempts" in str(exc_info.value)
     client.close()
 
 
-def test_fetch_text_corpus_http_error() -> None:
+def test_fetch_documents_http_error() -> None:
     """Verifies that other HTTP status errors raise NewYorkTimesAPIError."""
     client = NewYorkTimesClient(api_key="dummy_key", max_retries=1)
 
@@ -236,7 +235,7 @@ def test_fetch_text_corpus_http_error() -> None:
     client.client.get = MagicMock(side_effect=exc)
 
     with pytest.raises(NewYorkTimesAPIError) as exc_info:
-        client.fetch_text_corpus()
+        client.fetch_documents()
 
     assert "HTTP Error 500: Internal Server Error" in str(exc_info.value)
     client.close()

@@ -2,7 +2,6 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from word_of_the_day.connectors import GutenbergClient
 from word_of_the_day.connectors.gutenberg import DEFAULT_CLASSIC_IDS
 from word_of_the_day.generator import WordSourceGenerator
@@ -21,9 +20,9 @@ class DummyConnector:
     def connector_name(self) -> str:
         return "dummy"
 
-    def fetch_text_corpus(self) -> str:
+    def fetch_documents(self) -> list[str]:
         self.fetched_count += 1
-        return f"Content from {self.name} fetch {self.fetched_count}"
+        return [f"Content from {self.name} fetch {self.fetched_count}"]
 
     def close(self) -> None:
         self.close_called = True
@@ -146,7 +145,7 @@ def test_generator_count_resolution() -> None:
 
 def test_generator_error_handling() -> None:
     class FailingConnector(DummyConnector):
-        def fetch_text_corpus(self) -> str:
+        def fetch_documents(self) -> list[str]:
             raise RuntimeError("API failure")
 
     c1 = DummyConnector("C1")
@@ -180,7 +179,7 @@ def test_gutenberg_client_updates_book_id_on_fetch(
 
     # Mock choice to guarantee we pick a different classic ID on subsequent fetch
     with patch("random.choice", return_value=1342):
-        client_classic.fetch_text_corpus()
+        client_classic.fetch_documents()
         assert client_classic.book_id == 1342
 
     # 2. Wide random discovery mode
@@ -190,11 +189,11 @@ def test_gutenberg_client_updates_book_id_on_fetch(
 
     # Fetch and check it changed
     with patch("random.randint", return_value=9999):
-        client_wide.fetch_text_corpus()
+        client_wide.fetch_documents()
         assert client_wide.book_id == 9999
 
     # 3. Explicit book ID (non-random) does NOT change
     client_explicit = GutenbergClient(book_id=2701)
     assert client_explicit.book_id == 2701
-    client_explicit.fetch_text_corpus()
+    client_explicit.fetch_documents()
     assert client_explicit.book_id == 2701

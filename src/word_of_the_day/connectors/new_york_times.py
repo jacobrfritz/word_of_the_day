@@ -145,13 +145,12 @@ class NewYorkTimesClient(Connector):
 
         raise NewYorkTimesAPIError("Unreachable state in client backoff routine.")
 
-    def fetch_text_corpus(self) -> str:
+    def fetch_documents(self) -> list[str]:
         """
-        Fetches text content from a random New York Times article matching
-        a randomly picked publication year, month, and search page number.
+        Fetches articles from a random New York Times query.
 
         Returns:
-            A string containing the text of a random NYT article
+            A list of strings containing the text of retrieved articles
             (abstract/lead paragraph).
         """
         # We allow up to 5 attempts to find a random month/year/page
@@ -202,11 +201,8 @@ class NewYorkTimesClient(Connector):
                     )
                     continue
 
-                # Shuffle docs to pick one randomly
-                shuffled_docs = list(docs)
-                random.shuffle(shuffled_docs)
-
-                for doc in shuffled_docs:
+                documents = []
+                for doc in docs:
                     # Pull lead_paragraph, falling back to abstract, then snippet
                     text = (
                         doc.get("lead_paragraph")
@@ -214,11 +210,14 @@ class NewYorkTimesClient(Connector):
                         or doc.get("snippet")
                     )
                     if isinstance(text, str) and text.strip():
-                        logger.info(
-                            f"Successfully retrieved article text (length={len(text)}) "
-                            f"from begin_date={begin_date}, end_date={end_date}."
-                        )
-                        return text.strip()
+                        documents.append(text.strip())
+
+                if documents:
+                    logger.info(
+                        f"Successfully retrieved {len(documents)} articles "
+                        f"from begin_date={begin_date}, end_date={end_date}."
+                    )
+                    return documents
 
                 logger.warning(
                     "Articles found, but none contained valid text. "
@@ -235,12 +234,12 @@ class NewYorkTimesClient(Connector):
                 logger.warning(f"Error during search attempt {attempt + 1}: {exc}")
                 if attempt == max_search_attempts - 1:
                     raise NewYorkTimesAPIError(
-                        f"Failed to fetch text corpus after "
+                        f"Failed to fetch documents after "
                         f"{max_search_attempts} attempts: {exc}"
                     ) from exc
 
         raise NewYorkTimesAPIError(
-            f"Failed to fetch text corpus after {max_search_attempts} attempts: "
+            f"Failed to fetch documents after {max_search_attempts} attempts: "
             "no valid article text found."
         )
 

@@ -2,7 +2,6 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
-
 from word_of_the_day.connectors import (
     Connector,
     SubstackAPIError,
@@ -174,9 +173,12 @@ def test_fetch_rss_feed_content_success() -> None:
 
     client.client.get = MagicMock(return_value=mock_response)  # type: ignore[method-assign]
 
-    content = client.fetch_rss_feed_content("https://test.substack.com/feed")
+    content = client.fetch_rss_feed_documents("https://test.substack.com/feed")
 
-    expected_content = "First Post - First desc.\n\nSecond Post - This has no HTML tags"
+    expected_content = [
+        "First Post - First desc.",
+        "Second Post - This has no HTML tags",
+    ]
     assert content == expected_content
     client.client.get.assert_called_once_with("https://test.substack.com/feed")
     client.close()
@@ -204,8 +206,8 @@ def test_fetch_rss_feed_content_namespaces() -> None:
 
     client.client.get = MagicMock(return_value=mock_response)  # type: ignore[method-assign]
 
-    content = client.fetch_rss_feed_content("https://test.substack.com/feed")
-    assert content == "Namespace Post - Namespace description - Full content"
+    content = client.fetch_rss_feed_documents("https://test.substack.com/feed")
+    assert content == ["Namespace Post - Namespace description - Full content"]
     client.close()
 
 
@@ -220,16 +222,19 @@ def test_fetch_rss_feed_content_xml_error() -> None:
     client.client.get = MagicMock(return_value=mock_response)  # type: ignore[method-assign]
 
     with pytest.raises(SubstackAPIError) as excinfo:
-        client.fetch_rss_feed_content("https://test.substack.com/feed")
+        client.fetch_rss_feed_documents("https://test.substack.com/feed")
 
     assert "Error parsing RSS XML" in str(excinfo.value)
     client.close()
 
 
-def test_fetch_text_corpus_success() -> None:
-    """Verifies fetch_text_corpus discovers and aggregates feeds correctly."""
+def test_fetch_documents_success() -> None:
+    """Verifies fetch_documents discovers and aggregates feeds correctly."""
     client = SubstackClient(
-        category="philosophy", limit_publications=2, limit_posts_per_pub=1, shuffle_publications=False
+        category="philosophy",
+        limit_publications=2,
+        limit_posts_per_pub=1,
+        shuffle_publications=False,
     )
 
     # Mock discover_substack_feeds to return two feeds
@@ -240,33 +245,32 @@ def test_fetch_text_corpus_success() -> None:
         ]
     )
 
-    # Mock fetch_rss_feed_content for both feeds
-    def mock_fetch_rss(url: str) -> str:
+    # Mock fetch_rss_feed_documents for both feeds
+    def mock_fetch_rss(url: str) -> list[str]:
         if "pub1" in url:
-            return "Pub One Post - Body One"
+            return ["Pub One Post - Body One"]
         elif "pub2" in url:
-            return "Pub Two Post - Body Two"
-        return ""
+            return ["Pub Two Post - Body Two"]
+        return []
 
-    client.fetch_rss_feed_content = MagicMock(side_effect=mock_fetch_rss)  # type: ignore[method-assign]
+    client.fetch_rss_feed_documents = MagicMock(side_effect=mock_fetch_rss)  # type: ignore[method-assign]
 
-    corpus = client.fetch_text_corpus()
+    corpus = client.fetch_documents()
 
-    expected_corpus = (
-        "Pub One Post - Body One\n\n"
-        "=== NEW PUBLICATION FEED ===\n\n"
-        "Pub Two Post - Body Two"
-    )
+    expected_corpus = ["Pub One Post - Body One", "Pub Two Post - Body Two"]
     assert corpus == expected_corpus
     client.discover_substack_feeds.assert_called_once()
-    assert client.fetch_rss_feed_content.call_count == 2
+    assert client.fetch_rss_feed_documents.call_count == 2
     client.close()
 
 
-def test_fetch_text_corpus_one_fails() -> None:
-    """Verifies fetch_text_corpus continues even if one publication feed fails."""
+def test_fetch_documents_one_fails() -> None:
+    """Verifies fetch_documents continues even if one publication feed fails."""
     client = SubstackClient(
-        category="philosophy", limit_publications=2, limit_posts_per_pub=1, shuffle_publications=False
+        category="philosophy",
+        limit_publications=2,
+        limit_posts_per_pub=1,
+        shuffle_publications=False,
     )
 
     client.discover_substack_feeds = MagicMock(  # type: ignore[method-assign]
@@ -276,51 +280,56 @@ def test_fetch_text_corpus_one_fails() -> None:
         ]
     )
 
-    def mock_fetch_rss(url: str) -> str:
+    def mock_fetch_rss(url: str) -> list[str]:
         if "pub1" in url:
             raise SubstackAPIError("Mocked network failure")
         elif "pub2" in url:
-            return "Pub Two Post - Body Two"
-        return ""
+            return ["Pub Two Post - Body Two"]
+        return []
 
-    client.fetch_rss_feed_content = MagicMock(side_effect=mock_fetch_rss)  # type: ignore[method-assign]
+    client.fetch_rss_feed_documents = MagicMock(side_effect=mock_fetch_rss)  # type: ignore[method-assign]
 
-    corpus = client.fetch_text_corpus()
+    corpus = client.fetch_documents()
 
-    assert corpus == "Pub Two Post - Body Two"
+    assert corpus == ["Pub Two Post - Body Two"]
     client.close()
 
 
-def test_fetch_text_corpus_all_fails() -> None:
-    """Verifies fetch_text_corpus raises SubstackAPIError if all feeds fail."""
-    client = SubstackClient(category="philosophy", limit_publications=2, shuffle_publications=False)
+def test_fetch_documents_all_fails() -> None:
+    """Verifies fetch_documents raises SubstackAPIError if all feeds fail."""
+    client = SubstackClient(
+        category="philosophy", limit_publications=2, shuffle_publications=False
+    )
 
     client.discover_substack_feeds = MagicMock(  # type: ignore[method-assign]
         return_value=["https://pub1.substack.com/feed"]
     )
-    client.fetch_rss_feed_content = MagicMock(  # type: ignore[method-assign]
+    client.fetch_rss_feed_documents = MagicMock(  # type: ignore[method-assign]
         side_effect=SubstackAPIError("All failed")
     )
 
     with pytest.raises(SubstackAPIError) as excinfo:
-        client.fetch_text_corpus()
+        client.fetch_documents()
 
     assert "Failed to retrieve any content" in str(excinfo.value)
     client.close()
 
 
-def test_fetch_text_corpus_shuffles() -> None:
-    """Verifies fetch_text_corpus shuffles publications when shuffle_publications=True."""
+def test_fetch_documents_shuffles() -> None:
+    """Verifies fetch_documents shuffles publications when shuffle_publications=True."""
     client = SubstackClient(
-        category="philosophy", limit_publications=10, limit_posts_per_pub=1, shuffle_publications=True
+        category="philosophy",
+        limit_publications=10,
+        limit_posts_per_pub=1,
+        shuffle_publications=True,
     )
 
     feeds = [f"https://pub{i}.substack.com/feed" for i in range(20)]
     client.discover_substack_feeds = MagicMock(return_value=feeds)  # type: ignore[method-assign]
-    client.fetch_rss_feed_content = MagicMock(return_value="Post Content")  # type: ignore[method-assign]
+    client.fetch_rss_feed_documents = MagicMock(return_value=["Post Content"])  # type: ignore[method-assign]
 
     with patch("random.shuffle") as mock_shuffle:
-        client.fetch_text_corpus()
+        client.fetch_documents()
         mock_shuffle.assert_called_once()
         called_arg = mock_shuffle.call_args[0][0]
         assert called_arg == feeds

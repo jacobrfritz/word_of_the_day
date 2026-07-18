@@ -169,7 +169,7 @@ class PoetryDBClient(Connector):
 
         raise PoetryDBAPIError("Unreachable state in PoetryDB client backoff routine.")
 
-    def fetch_text_corpus(self) -> str:
+    def fetch_documents(self) -> list[str]:
         """
         Fetches raw text content of a random classic poem.
 
@@ -186,7 +186,7 @@ class PoetryDBClient(Connector):
         If author is "any", queries `/random/1` to retrieve a random poem globally.
 
         Returns:
-            A string containing the lines of the poem joined by newlines.
+            A list containing the lines of the poem joined by newlines as a single document.
         """
         # Determine which author to query
         resolved_author = self.author
@@ -216,7 +216,7 @@ class PoetryDBClient(Connector):
             lines = poem.get("lines")
             if not isinstance(lines, list):
                 raise PoetryDBAPIError("Poem format is invalid: missing 'lines'.")
-            return "\n".join(lines)
+            return ["\n".join(lines)]
 
         else:
             # Two-step retrieval to prevent timeouts on large payloads
@@ -264,7 +264,7 @@ class PoetryDBClient(Connector):
             lines = poem.get("lines")
             if not isinstance(lines, list):
                 raise PoetryDBAPIError("Poem format is invalid: missing 'lines'.")
-            return "\n".join(lines)
+            return ["\n".join(lines)]
 
     def close(self) -> None:
         """Cleanly close the underlying HTTPX connection pool."""

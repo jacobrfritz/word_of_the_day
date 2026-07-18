@@ -178,6 +178,35 @@ class Storage:
                 """
             )
 
+            # Create seen_words table to track historically checked words
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS seen_words (
+                    word TEXT PRIMARY KEY,
+                    is_valid_dict_word INTEGER NOT NULL,
+                    last_seen_date TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_seen_words_word ON seen_words(word)"
+            )
+
+            # Migration: Migrate existing entries from dictionary_cache to seen_words if seen_words is empty
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM seen_words")
+            if cursor.fetchone()[0] == 0:
+                from datetime import datetime
+
+                now_str = datetime.now().isoformat()
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO seen_words (word, is_valid_dict_word, last_seen_date)
+                    SELECT word, is_valid, ? FROM dictionary_cache
+                    """,
+                    (now_str,),
+                )
+
             # One-time migration: delete old bootstrapped words from wotd_history
             cursor = conn.cursor()
             cursor.execute("DELETE FROM wotd_history WHERE source = 'Bootstrap CSV'")
@@ -303,6 +332,34 @@ class Storage:
                     origin     = excluded.origin
                 """,
                 (cleaned_word, int(is_valid), definition, origin),
+            )
+            conn.commit()
+
+    def get_all_seen_words(self) -> set[str]:
+        """Loads all known (processed) words into memory at the start of the pipeline for O(1) lookup."""
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT word FROM seen_words")
+            return {row[0] for row in cursor.fetchall()}
+
+    def bulk_save_seen_words(self, words: list[dict[str, Any]]) -> None:
+        """
+        After the dictionary API step, dump all newly checked words into the database
+        (both the valid ones and the rejected ones).
+        """
+        from datetime import datetime
+
+        now_str = datetime.now().isoformat()
+        records = [
+            (w["word"].strip().lower(), int(w["is_valid"]), now_str) for w in words
+        ]
+        with self._connect() as conn:
+            conn.executemany(
+                """
+                INSERT OR REPLACE INTO seen_words (word, is_valid_dict_word, last_seen_date)
+                VALUES (?, ?, ?)
+                """,
+                records,
             )
             conn.commit()
 

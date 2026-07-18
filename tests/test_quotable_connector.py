@@ -2,7 +2,6 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
-
 from word_of_the_day.connectors import (
     Connector,
     QuotableAPIError,
@@ -43,8 +42,8 @@ def test_quotable_client_initialization() -> None:
     client_custom.close()
 
 
-def test_fetch_text_corpus_success() -> None:
-    """Verifies that fetch_text_corpus handles a successful JSON response."""
+def test_fetch_documents_success() -> None:
+    """Verifies that fetch_documents handles a successful JSON response."""
     client = QuotableClient(tags=["literature", "wisdom"], quotes_per_fetch=2)
 
     mock_data = [
@@ -68,12 +67,12 @@ def test_fetch_text_corpus_success() -> None:
 
     client.client.get = MagicMock(return_value=mock_response)  # type: ignore[method-assign]
 
-    corpus = client.fetch_text_corpus()
+    corpus = client.fetch_documents()
 
-    expected_corpus = (
-        "To be or not to be. -- William Shakespeare\n\n"
-        "The only true wisdom is in knowing you know nothing. -- Socrates"
-    )
+    expected_corpus = [
+        "To be or not to be. -- William Shakespeare",
+        "The only true wisdom is in knowing you know nothing. -- Socrates",
+    ]
     assert corpus == expected_corpus
 
     client.client.get.assert_called_once()
@@ -85,8 +84,8 @@ def test_fetch_text_corpus_success() -> None:
     client.close()
 
 
-def test_fetch_text_corpus_single_object_response() -> None:
-    """Verifies that fetch_text_corpus handles a single dictionary response format."""
+def test_fetch_documents_single_object_response() -> None:
+    """Verifies that fetch_documents handles a single dictionary response format."""
     client = QuotableClient(tags="wisdom")
 
     mock_data = {
@@ -101,8 +100,8 @@ def test_fetch_text_corpus_single_object_response() -> None:
 
     client.client.get = MagicMock(return_value=mock_response)  # type: ignore[method-assign]
 
-    corpus = client.fetch_text_corpus()
-    assert corpus == "Think twice, speak once. -- John Doe"
+    corpus = client.fetch_documents()
+    assert corpus == ["Think twice, speak once. -- John Doe"]
     client.close()
 
 
@@ -117,7 +116,7 @@ def test_rate_limiting() -> None:
     client.client.get = MagicMock(return_value=mock_response)  # type: ignore[method-assign]
 
     with pytest.raises(QuotableRateLimitError) as exc_info:
-        client.fetch_text_corpus()
+        client.fetch_documents()
 
     assert exc_info.value.retry_after == 15
     assert "Please retry after 15 seconds." in str(exc_info.value)
@@ -138,7 +137,7 @@ def test_rate_limiting_invalid_retry_after() -> None:
     client.client.get = MagicMock(return_value=mock_response)  # type: ignore[method-assign]
 
     with pytest.raises(QuotableRateLimitError) as exc_info:
-        client.fetch_text_corpus()
+        client.fetch_documents()
 
     assert exc_info.value.retry_after == 60
     assert "Please retry after 60 seconds." in str(exc_info.value)
@@ -160,7 +159,7 @@ def test_http_status_error_non_429() -> None:
     client.client.get = MagicMock(return_value=mock_response)  # type: ignore[method-assign]
 
     with pytest.raises(QuotableAPIError) as exc_info:
-        client.fetch_text_corpus()
+        client.fetch_documents()
 
     assert "HTTP Error 500: Internal Server Error" in str(exc_info.value)
     client.close()
@@ -184,8 +183,8 @@ def test_transient_network_error_retry_success(mock_sleep: MagicMock) -> None:
         ]
     )
 
-    corpus = client.fetch_text_corpus()
-    assert corpus == "Success quote -- Famous"
+    corpus = client.fetch_documents()
+    assert corpus == ["Success quote -- Famous"]
     assert client.client.get.call_count == 3
     assert mock_sleep.call_count == 2
     client.close()
@@ -202,7 +201,7 @@ def test_transient_network_error_exhausted(mock_sleep: MagicMock) -> None:
     )
 
     with pytest.raises(QuotableNetworkError) as exc_info:
-        client.fetch_text_corpus()
+        client.fetch_documents()
 
     assert "Connection failed after 3 attempts" in str(exc_info.value)
     assert client.client.get.call_count == 3
@@ -210,7 +209,7 @@ def test_transient_network_error_exhausted(mock_sleep: MagicMock) -> None:
     client.close()
 
 
-def test_fetch_text_corpus_empty_response() -> None:
+def test_fetch_documents_empty_response() -> None:
     """Verifies that empty list response raises QuotableAPIError."""
     client = QuotableClient()
 
@@ -221,13 +220,13 @@ def test_fetch_text_corpus_empty_response() -> None:
     client.client.get = MagicMock(return_value=mock_response)  # type: ignore[method-assign]
 
     with pytest.raises(QuotableAPIError) as exc_info:
-        client.fetch_text_corpus()
+        client.fetch_documents()
 
     assert "No quotes returned from Quotable API." in str(exc_info.value)
     client.close()
 
 
-def test_fetch_text_corpus_no_valid_text() -> None:
+def test_fetch_documents_no_valid_text() -> None:
     """Verifies that responses with missing content raise QuotableAPIError."""
     client = QuotableClient()
 
@@ -238,7 +237,7 @@ def test_fetch_text_corpus_no_valid_text() -> None:
     client.client.get = MagicMock(return_value=mock_response)  # type: ignore[method-assign]
 
     with pytest.raises(QuotableAPIError) as exc_info:
-        client.fetch_text_corpus()
+        client.fetch_documents()
 
     assert "Quotes found, but none contained valid text." in str(exc_info.value)
     client.close()

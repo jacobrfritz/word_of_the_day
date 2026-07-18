@@ -140,6 +140,7 @@ class EmbeddingScorer:
         if cache_exists and csv_exists:
             try:
                 import numpy as np
+
                 cache_data = np.load(self.cache_npz_path, allow_pickle=True)
                 cached_words = set(cache_data["words"])
 
@@ -152,7 +153,9 @@ class EmbeddingScorer:
                             csv_words.add(word.strip().lower())
 
                 if csv_words != cached_words:
-                    logger.info("Seed CSV words differ from cached embeddings. Triggering recompilation...")
+                    logger.info(
+                        "Seed CSV words differ from cached embeddings. Triggering recompilation..."
+                    )
                     should_recompile = True
             except Exception as e:
                 logger.warning(f"Error checking cache consistency: {e}. Recompiling...")
@@ -395,7 +398,9 @@ class EmbeddingScorer:
             # Cosine similarity is the dot product of normalized vectors
             # target_centroid_normalized shape: (embedding_dim,)
             # normalized_candidates shape: (num_words, embedding_dim)
-            similarities = np.dot(normalized_candidates, self.target_centroid_normalized)
+            similarities = np.dot(
+                normalized_candidates, self.target_centroid_normalized
+            )
             return [float(s) for s in similarities]
 
         # Vectorized cosine similarities via dot product
@@ -533,3 +538,114 @@ class CompositeScorer:
             for i, score in enumerate(scores):
                 total_scores[i] += weight * score
         return total_scores
+
+
+class TFIDFScorer:
+    """
+    Scores words based on TF-IDF computed over a corpus of documents.
+    """
+
+    def __init__(
+        self, stop_words: str | list[str] | set[str] | None = "english"
+    ) -> None:
+        self.stop_words = stop_words
+
+    @property
+    def higher_is_better(self) -> bool:
+        return True
+
+    def score(self, word: str) -> float:
+        """
+        No-op fallback for WordScorer interface compatibility.
+        """
+        return 0.0
+
+    def score_batch(self, words: list[str]) -> list[float]:
+        """
+        No-op fallback for WordScorer interface compatibility.
+        """
+        return [0.0] * len(words)
+
+    def get_top_words(self, documents: list[str], limit: int = 500) -> list[str]:
+        """
+        Fits on the documents, calculates the maximum TF-IDF score for each word
+        across all documents, and returns the top `limit` unique words.
+        """
+        if not documents or not any(doc.strip() for doc in documents):
+            return []
+
+        try:
+            import numpy as np
+            from sklearn.feature_extraction.text import TfidfVectorizer
+        except ImportError as e:
+            raise ImportError(
+                "TFIDFScorer requires 'scikit-learn' and 'numpy' packages. "
+                "Please install them using: uv pip install scikit-learn numpy"
+            ) from e
+
+        # Ensure stop words parameter is list if it is a set
+        stop_words_param = self.stop_words
+        if isinstance(stop_words_param, set):
+            stop_words_param = list(stop_words_param)
+
+        try:
+            vectorizer = TfidfVectorizer(stop_words=stop_words_param)
+            tfidf_matrix = vectorizer.fit_transform(documents)
+            feature_names = vectorizer.get_feature_names_out()
+        except ValueError:
+            # Handle case where all documents contain only stop words
+            return []
+
+        if tfidf_matrix.shape[0] == 0 or tfidf_matrix.shape[1] == 0:
+            return []
+
+        # Get max TF-IDF score for each word across all documents
+        max_tfidf = np.array(tfidf_matrix.max(axis=0).todense()).flatten()
+
+        # Sort the features based on max TF-IDF score descending
+        top_indices = np.argsort(max_tfidf)[::-1][:limit]
+
+        return [str(feature_names[i]) for i in top_indices]
+
+    def get_top_words_with_scores(
+        self, documents: list[str], limit: int = 500
+    ) -> list[tuple[str, float]]:
+        """
+        Fits on the documents, calculates the maximum TF-IDF score for each word
+        across all documents, and returns the top `limit` unique words with their scores.
+        """
+        if not documents or not any(doc.strip() for doc in documents):
+            return []
+
+        try:
+            import numpy as np
+            from sklearn.feature_extraction.text import TfidfVectorizer
+        except ImportError as e:
+            raise ImportError(
+                "TFIDFScorer requires 'scikit-learn' and 'numpy' packages. "
+                "Please install them using: uv pip install scikit-learn numpy"
+            ) from e
+
+        # Ensure stop words parameter is list if it is a set
+        stop_words_param = self.stop_words
+        if isinstance(stop_words_param, set):
+            stop_words_param = list(stop_words_param)
+
+        try:
+            vectorizer = TfidfVectorizer(stop_words=stop_words_param)
+            tfidf_matrix = vectorizer.fit_transform(documents)
+            feature_names = vectorizer.get_feature_names_out()
+        except ValueError:
+            # Handle case where all documents contain only stop words
+            return []
+
+        if tfidf_matrix.shape[0] == 0 or tfidf_matrix.shape[1] == 0:
+            return []
+
+        # Get max TF-IDF score for each word across all documents
+        max_tfidf = np.array(tfidf_matrix.max(axis=0).todense()).flatten()
+
+        # Sort the features based on max TF-IDF score descending
+        top_indices = np.argsort(max_tfidf)[::-1][:limit]
+
+        return [(str(feature_names[i]), float(max_tfidf[i])) for i in top_indices]
