@@ -21,7 +21,7 @@ jobs:
         run: uv python install
 
       - name: Run Tests
-        run: uv run pytest
+        run: uv run --all-extras pytest
 
   build-and-push:
     needs: test
