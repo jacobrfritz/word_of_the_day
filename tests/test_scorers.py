@@ -223,23 +223,28 @@ def test_embedding_scorer_clustering_and_target_scoring(
     norms = np.linalg.norm(stable_centroids, axis=1)
     assert np.all(np.diff(norms) >= 0)
 
-    # 2. Test set_target_centroid & scoring directly against the centroid
-    target_centroid = np.array([1.0, 0.0], dtype=np.float32)
-    scorer.set_target_centroid(target_centroid)
+    # 2. Test set_active_cluster & scoring directly using KNN within that cluster
+    scorer.set_active_cluster(0, 2)
+    assert scorer.active_cluster_id == 0
+    assert scorer.cluster_labels is not None
 
-    # Candidate "test" embeds as [1.0, 0.0] -> similarity should be 1.0
+    # Candidate "test" embeds as [1.0, 0.0]
     mock_model.encode.return_value = np.array([[1.0, 0.0]], dtype=np.float32)
-    score_perfect = scorer.score("test")
-    assert pytest.approx(score_perfect, 0.001) == 1.0
+    score_computed = scorer.score("test")
 
-    # Candidate "test2" embeds as [0.0, 1.0] -> similarity should be 0.0
-    mock_model.encode.return_value = np.array([[0.0, 1.0]], dtype=np.float32)
-    score_orthogonal = scorer.score("test2")
-    assert pytest.approx(score_orthogonal, 0.001) == 0.0
+    # Compute expected score manually
+    cluster_0_mask = (scorer.cluster_labels == 0)
+    cluster_0_normalized_seeds = scorer.normalized_seeds[cluster_0_mask]
+    sims = np.dot(cluster_0_normalized_seeds, np.array([1.0, 0.0], dtype=np.float32))
+    k_val = min(scorer.k, len(sims))
+    expected_score = float(np.mean(np.partition(sims, -k_val)[-k_val:]))
 
-    # Revert target centroid
-    scorer.set_target_centroid(None)
-    assert scorer.target_centroid_normalized is None
+    assert pytest.approx(score_computed, 0.001) == expected_score
+
+    # Revert active cluster
+    scorer.set_active_cluster(None, 0)
+    assert scorer.active_cluster_id is None
+    assert scorer.cluster_labels is None
 
 
 @patch("sentence_transformers.SentenceTransformer")
@@ -355,10 +360,10 @@ def test_embedding_scorer_batch_calculation(
 
 
 @patch("sentence_transformers.SentenceTransformer")
-def test_embedding_scorer_batch_centroid_scoring(
+def test_embedding_scorer_batch_active_cluster_scoring(
     mock_transformer_class: MagicMock, tmp_path: Path
 ) -> None:
-    """Verifies batch scoring against a target centroid."""
+    """Verifies batch scoring using KNN within an active cluster."""
     csv_path = tmp_path / "seeds.csv"
     cache_path = tmp_path / "cache.npz"
 
@@ -377,9 +382,8 @@ def test_embedding_scorer_batch_centroid_scoring(
         model_name="dummy-model",
     )
 
-    # Set target centroid to [1.0, 0.0]
-    target_centroid = np.array([1.0, 0.0], dtype=np.float32)
-    scorer.set_target_centroid(target_centroid)
+    # Set active cluster to 0 with optimal_k=2
+    scorer.set_active_cluster(0, 2)
 
     # Candidates: "cand1" [1.0, 0.0] and "cand2" [0.0, 1.0]
     mock_model.encode.return_value = np.array(
@@ -388,8 +392,20 @@ def test_embedding_scorer_batch_centroid_scoring(
 
     scores = scorer.score_batch(["cand1", "cand2"])
     assert len(scores) == 2
-    assert pytest.approx(scores[0], 0.001) == 1.0
-    assert pytest.approx(scores[1], 0.001) == 0.0
+
+    # Compute expected score manually for active cluster
+    cluster_0_mask = (scorer.cluster_labels == 0)
+    cluster_0_normalized_seeds = scorer.normalized_seeds[cluster_0_mask]
+    
+    sims1 = np.dot(cluster_0_normalized_seeds, np.array([1.0, 0.0], dtype=np.float32))
+    k1 = min(scorer.k, len(sims1))
+    expected1 = float(np.mean(np.partition(sims1, -k1)[-k1:])) if k1 > 0 else 0.0
+    assert pytest.approx(scores[0], 0.001) == expected1
+
+    sims2 = np.dot(cluster_0_normalized_seeds, np.array([0.0, 1.0], dtype=np.float32))
+    k2 = min(scorer.k, len(sims2))
+    expected2 = float(np.mean(np.partition(sims2, -k2)[-k2:])) if k2 > 0 else 0.0
+    assert pytest.approx(scores[1], 0.001) == expected2
 
 
 def test_composite_scorer_batch() -> None:

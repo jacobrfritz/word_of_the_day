@@ -112,6 +112,9 @@ class EmbeddingScorer:
         self.model: SentenceTransformer | None = None
         self.target_centroid: np.ndarray | None = None
         self.target_centroid_normalized: np.ndarray | None = None
+        self.active_cluster_id: int | None = None
+        self.cluster_labels: np.ndarray | None = None
+        self.cluster_optimal_k: int = 0
 
         self._initialize()
 
@@ -352,8 +355,18 @@ class EmbeddingScorer:
             similarity = np.dot(self.target_centroid_normalized, cand_norm)
             return float(similarity)
 
+        # Filter seeds by active cluster if set
+        if self.active_cluster_id is not None and self.cluster_labels is not None:
+            cluster_mask = (self.cluster_labels == self.active_cluster_id)
+            if np.any(cluster_mask):
+                normalized_seeds_to_use = self.normalized_seeds[cluster_mask]
+            else:
+                normalized_seeds_to_use = self.normalized_seeds
+        else:
+            normalized_seeds_to_use = self.normalized_seeds
+
         # Vectorized cosine similarities via dot product
-        similarities = np.dot(self.normalized_seeds, cand_norm)
+        similarities = np.dot(normalized_seeds_to_use, cand_norm)
 
         # Get top-k similarities
         k = min(self.k, len(similarities))
@@ -403,13 +416,23 @@ class EmbeddingScorer:
             )
             return [float(s) for s in similarities]
 
+        # Filter seeds by active cluster if set
+        if self.active_cluster_id is not None and self.cluster_labels is not None:
+            cluster_mask = (self.cluster_labels == self.active_cluster_id)
+            if np.any(cluster_mask):
+                normalized_seeds_to_use = self.normalized_seeds[cluster_mask]
+            else:
+                normalized_seeds_to_use = self.normalized_seeds
+        else:
+            normalized_seeds_to_use = self.normalized_seeds
+
         # Vectorized cosine similarities via dot product
-        # normalized_seeds shape: (num_seeds, embedding_dim)
+        # normalized_seeds_to_use shape: (num_seeds, embedding_dim)
         # normalized_candidates.T shape: (embedding_dim, num_words)
         # similarities shape: (num_seeds, num_words)
-        similarities = np.dot(self.normalized_seeds, normalized_candidates.T)
+        similarities = np.dot(normalized_seeds_to_use, normalized_candidates.T)
 
-        k = min(self.k, len(self.seed_words))
+        k = min(self.k, len(normalized_seeds_to_use))
         if k <= 0:
             return [0.0] * len(words)
 
@@ -431,6 +454,48 @@ class EmbeddingScorer:
             self.target_centroid_normalized = centroid / (norm if norm > 0 else 1.0)
         else:
             self.target_centroid_normalized = None
+
+    def set_active_cluster(self, cluster_id: int | None, optimal_k: int) -> None:
+        """
+        Sets the active cluster ID for scoring candidates using KNN within the cluster.
+        If cluster_id is None, clears the active cluster filter (scores against all seeds).
+        """
+        import numpy as np
+
+        self.active_cluster_id = cluster_id
+        if cluster_id is None or optimal_k <= 0:
+            self.cluster_labels = None
+            self.cluster_optimal_k = 0
+            return
+
+        # Perform clustering to assign seeds to clusters (deterministic via random_state=42)
+        try:
+            from sklearn.cluster import KMeans
+        except ImportError as e:
+            raise ImportError(
+                "Clustering requires 'scikit-learn'. Please install it using: uv pip install scikit-learn"
+            ) from e
+
+        seed_embeddings = self.seed_embeddings
+        if len(seed_embeddings) == 0:
+            raise ValueError("No seed embeddings available for clustering.")
+
+        # Ensure optimal_k is valid
+        optimal_k = min(optimal_k, len(seed_embeddings))
+
+        # Fit K-Means
+        kmeans = KMeans(n_clusters=optimal_k, random_state=42, n_init="auto")
+        labels = kmeans.fit_predict(seed_embeddings)
+        centroids = kmeans.cluster_centers_
+
+        # Sort centroids deterministically by vector norm
+        sorted_indices = np.argsort(np.linalg.norm(centroids, axis=1))
+        # Map original labels to the new sorted order labels
+        label_mapping = {old: new for new, old in enumerate(sorted_indices)}
+        sorted_labels = np.array([label_mapping[l] for l in labels])
+
+        self.cluster_labels = sorted_labels
+        self.cluster_optimal_k = optimal_k
 
     def get_optimal_seed_clusters(
         self, k_min: int = 2, k_max: int = 10

@@ -319,20 +319,23 @@ def run_pipeline(
 
     today_cluster_id = None
     if use_embeddings and isinstance(scorer, EmbeddingScorer):
-        try:
-            stable_centroids, optimal_k = scorer.get_optimal_seed_clusters()
-            today_cluster_id = storage.get_next_cluster_id(optimal_k)
-            today_target_centroid = stable_centroids[today_cluster_id]
-            scorer.set_target_centroid(today_target_centroid)
-            logger.info(
-                f"Dynamic seed rotation: using cluster {today_cluster_id} "
-                f"of {optimal_k} total clusters."
-            )
-        except Exception as exc:
-            logger.warning(
-                f"Failed to set up dynamic seed-target clustering: {exc}. "
-                "Proceeding with standard EmbeddingScorer."
-            )
+        if settings.cluster_knn_enabled:
+            try:
+                stable_centroids, optimal_k = scorer.get_optimal_seed_clusters()
+                today_cluster_id = storage.get_next_cluster_id(optimal_k)
+                scorer.set_active_cluster(today_cluster_id, optimal_k)
+                logger.info(
+                    f"Dynamic seed rotation (KNN in cluster): using cluster {today_cluster_id} "
+                    f"of {optimal_k} total clusters."
+                )
+            except Exception as exc:
+                logger.warning(
+                    f"Failed to set up dynamic seed-target clustering: {exc}. "
+                    "Proceeding with standard EmbeddingScorer."
+                )
+        else:
+            scorer.set_active_cluster(None, 0)
+            logger.info("Dynamic seed rotation is disabled. Scoring against all seeds.")
 
     logger.info("Initializing WordOfTheDayPipeline...")
 

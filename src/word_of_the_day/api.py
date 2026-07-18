@@ -630,6 +630,7 @@ class ExploreRequest(BaseModel):
     max_score: float | None = 4.0
     limit: int | None = 5
     use_embeddings: bool | None = True
+    cluster_knn_enabled: bool | None = None
     use_lemmatization: bool | None = True
     min_word_length: int | None = None
     max_word_length: int | None = None
@@ -919,6 +920,24 @@ def admin_explore(
         embedding_model=settings.embedding_model,
         embedding_k=settings.embedding_k,
     )
+
+    from .scorers import EmbeddingScorer
+
+    use_cluster_knn = (
+        payload.cluster_knn_enabled
+        if payload.cluster_knn_enabled is not None
+        else settings.cluster_knn_enabled
+    )
+    if (payload.use_embeddings or False) and isinstance(scorer, EmbeddingScorer):
+        if use_cluster_knn:
+            try:
+                stable_centroids, optimal_k = scorer.get_optimal_seed_clusters()
+                today_cluster_id = storage.get_next_cluster_id(optimal_k)
+                scorer.set_active_cluster(today_cluster_id, optimal_k)
+            except Exception as exc:
+                logger.warning(f"Failed to set up dynamic seed-target clustering in explorer: {exc}")
+        else:
+            scorer.set_active_cluster(None, 0)
 
     used_words = storage.get_used_words(
         days_threshold=365, reference_date=datetime.now().strftime("%Y-%m-%d")
