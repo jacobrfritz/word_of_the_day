@@ -263,7 +263,7 @@
 
             <!-- Node 2: Rank -->
             <g class="pipeline-node" transform="translate(146, 25)">
-              <title>Ranking: Candidates are filtered by POS &amp; length, then ranked using TF-IDF or seed-target embeddings (daily rotating cluster centroids).</title>
+              <title>Ranking: Candidates are filtered by POS &amp; length, then ranked using TF-IDF, Zipf frequency, or seed-target embeddings (daily rotating cluster centroids).</title>
               <rect width="110" height="70" rx="16" ry="16" fill="var(--bg-card)" stroke="var(--border-color)" stroke-width="1.5" />
               <svg x="43" y="10" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="4" y="4" width="16" height="16" rx="2" ry="2" />
@@ -278,7 +278,7 @@
                 <line x1="1" y1="15" x2="4" y2="15" />
               </svg>
               <text x="55" y="49" text-anchor="middle" class="node-label">Rank</text>
-              <text x="55" y="59" text-anchor="middle" class="node-sublabel">Semantic / TF-IDF</text>
+              <text x="55" y="59" text-anchor="middle" class="node-sublabel">Embed/TFIDF/Zipf</text>
             </g>
 
             <!-- Node 3: Validate -->
@@ -331,7 +331,7 @@
         <div class="pipeline-blog">
           <p>Every day, <span class="brand-inline">word<span>.</span></span> selects a vocabulary word designed to challenge, inspire, or occasionally make you look up its pronunciation three times.</p>
           <p>The journey begins with <strong>Ingestion</strong>, where a background scheduler fetches raw text corpora from diverse digital channels—ranging from Wikipedia and classic Project Gutenberg novels to Substack feeds—alongside previously cached database candidates.</p>
-          <p>Next, candidates undergo <strong>Filter &amp; Rank</strong>. To ensure reusability, a 365-day check filters out recently used selections. The remaining words are lemmatized and checked against a Part-of-Speech and length gate. Survivors are ranked: either via term frequency (TF-IDF) across documents, or using a SentenceTransformer to compute cosine similarity against a daily rotating target cluster centroid (curated via K-Means and the Elbow Method).</p>
+          <p>Next, candidates undergo <strong>Filter &amp; Rank</strong>. To ensure reusability, a 365-day check filters out recently used selections. The remaining words are lemmatized and checked against a Part-of-Speech and length gate. Candidates are also filtered by a Zipf frequency "goldilocks" range to exclude overly common or obscure words. Survivors are ranked: either via term frequency (TF-IDF) across documents, Zipf frequency scoring to target rare vocabulary, or using a SentenceTransformer to compute cosine similarity against a daily rotating target cluster centroid (curated via K-Means and the Elbow Method).</p>
           <p>Highly ranked candidates are then passed to <strong>Validation</strong>. Here, the system lazily queries the dictionary API to verify the word exists and retrieve its definition. Because API calls are rate-limited, validation is done on-demand, stopping the moment we find enough valid words to satisfy our candidate pool limit.</p>
           <p>Finally, instead of a rigid argmax, the pipeline applies <strong>Softmax Selection</strong> scaled by a tunable temperature parameter. High temperatures distribute selection probability more evenly to foster variety and creativity, while low temperatures collapse the choice deterministically onto the highest-scoring candidate.</p>
           <p>The chosen word is then saved to the database, delivered via email daily newsletter at 6:00 AM, and served via our FastAPI backend.</p>

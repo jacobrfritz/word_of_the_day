@@ -325,7 +325,8 @@ async function handleExplore(e) {
       card.className = 'candidate-card glass-card';
 
       const scoreLabel = cand.score ? `Score: ${cand.score.toFixed(4)}` : '';
-      const badgeSuffix = scoreLabel ? ` (${scoreLabel})` : '';
+      const zipfLabel = cand.zipf_score !== undefined && cand.zipf_score !== null ? `Zipf: ${cand.zipf_score.toFixed(2)}` : '';
+      const badgeSuffix = (scoreLabel || zipfLabel) ? ` (${[scoreLabel, zipfLabel].filter(Boolean).join(' | ')})` : '';
 
       card.innerHTML = `
         <div class="candidate-header">

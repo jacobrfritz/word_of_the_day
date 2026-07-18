@@ -207,8 +207,8 @@ class WordOfTheDayPipeline:
     def score_and_filter(
         self,
         words: set[str],
-        min_score: float = 2.3,
-        max_score: float = 4.0,
+        min_score: float | None = None,
+        max_score: float | None = None,
         min_word_length: int | None = None,
         max_word_length: int | None = None,
         pos_filter_nouns: bool | None = None,
@@ -272,6 +272,13 @@ class WordOfTheDayPipeline:
 
             # POS filter
             if tag not in allowed_tags:
+                continue
+
+            # Zipf score filter (goldilocks range)
+            z_score = zipf_frequency(word, "en")
+            if min_score is not None and z_score <= min_score:
+                continue
+            if max_score is not None and z_score > max_score:
                 continue
 
             filtered_words.append(word)
@@ -374,8 +381,8 @@ class WordOfTheDayPipeline:
     def score_candidates(
         self,
         text: str | list[str],
-        min_score: float = 2.3,
-        max_score: float = 4.0,
+        min_score: float | None = None,
+        max_score: float | None = None,
         shuffle: bool = False,
         is_reusable_cb: Callable[[str], bool] | None = None,
         min_word_length: int | None = None,
@@ -448,6 +455,14 @@ class WordOfTheDayPipeline:
                     continue
                 if tag not in allowed_tags:
                     continue
+
+                # Zipf score filter (goldilocks range)
+                z_score = zipf_frequency(word, "en")
+                if min_score is not None and z_score <= min_score:
+                    continue
+                if max_score is not None and z_score > max_score:
+                    continue
+
                 valid_words.add(word)
 
             # Compile final scored candidates (preserving sorted TF-IDF order)
@@ -490,8 +505,8 @@ class WordOfTheDayPipeline:
     def find_candidates(
         self,
         text: str | list[str],
-        min_score: float = 2.3,
-        max_score: float = 4.0,
+        min_score: float | None = None,
+        max_score: float | None = None,
         limit: int = 1,
         shuffle: bool = False,
         is_reusable_cb: Callable[[str], bool] | None = None,
