@@ -220,16 +220,17 @@ class WikipediaClient(Connector):
         extract = page_data.get("extract", "No content text available.")
         return extract if isinstance(extract, str) else "No content text available."
 
-    def fetch_text_corpus(self) -> str:
+    def fetch_documents(self) -> list[str]:
         """
-        Fetches raw text content from a random Wikipedia article.
+        Fetches full text content from a random Wikipedia article.
 
         Returns:
-            A string containing the full text of a random Wikipedia article.
+            A list containing the full text of a random Wikipedia article as a single document.
         """
         summary = self.get_random_article_summary()
         title = summary["title"]
-        return self.get_article_full_text(title)
+        text = self.get_article_full_text(title)
+        return [text] if text else []
 
     def close(self) -> None:
         """Cleanly close the underlying HTTPX connection pool."""

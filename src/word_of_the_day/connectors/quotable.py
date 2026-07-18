@@ -138,12 +138,12 @@ class QuotableClient(Connector):
 
         raise QuotableAPIError("Unreachable state in client backoff routine.")
 
-    def fetch_text_corpus(self) -> str:
+    def fetch_documents(self) -> list[str]:
         """
-        Fetches a random selection of quotes and joins them as a corpus.
+        Fetches a random selection of quotes as discrete documents.
 
         Returns:
-            A string containing the formatted quotes joined by double newlines.
+            A list of strings, where each string is a formatted quote: "content -- author".
         """
         params: dict[str, str | int | float | bool | None] = {}
 
@@ -192,7 +192,7 @@ class QuotableClient(Connector):
         if not formatted_quotes:
             raise QuotableAPIError("Quotes found, but none contained valid text.")
 
-        return "\n\n".join(formatted_quotes)
+        return formatted_quotes
 
     def close(self) -> None:
         """Cleanly close the underlying HTTPX connection pool."""

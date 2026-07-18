@@ -171,7 +171,7 @@
       <div class="tab-panel" id="exploreTab">
         <div class="glass-card mb-2">
           <h2 class="panel-title">Run Text Harvesting & Candidate Selection</h2>
-          <p class="panel-subtitle">Harvest texts from data sources, score and filter candidate words based on Zipf frequency or embeddings similarity, then choose which candidate to schedule.</p>
+          <p class="panel-subtitle">Harvest texts from data sources, score and filter candidate words based on Part-of-Speech and length bounds, then choose which candidate to schedule.</p>
 
           <form id="exploreForm" class="admin-form grid-form">
             <div class="form-group col-12">
@@ -186,12 +186,12 @@
               </div>
             </div>
             <div class="form-group col-3">
-              <label for="exploreMinScore">Min Zipf Score</label>
-              <input type="number" id="exploreMinScore" step="0.1" value="2.3">
+              <label for="exploreMinLength">Min Word Length</label>
+              <input type="number" id="exploreMinLength" placeholder="None">
             </div>
             <div class="form-group col-3">
-              <label for="exploreMaxScore">Max Zipf Score</label>
-              <input type="number" id="exploreMaxScore" step="0.1" value="4.0">
+              <label for="exploreMaxLength">Max Word Length</label>
+              <input type="number" id="exploreMaxLength" placeholder="None">
             </div>
             <div class="form-group col-3">
               <label for="exploreLimit">Candidate Limit</label>
@@ -201,8 +201,16 @@
               <label for="exploreEmbeddings">Ranking</label>
               <select id="exploreEmbeddings">
                 <option value="true">Seed Embeddings</option>
-                <option value="false">Zipf Score Only</option>
+                <option value="false">TF-IDF Score Only</option>
               </select>
+            </div>
+            <div class="form-group col-12">
+              <label>Part of Speech Filters</label>
+              <div class="checkbox-group">
+                <label><input type="checkbox" id="explorePosNouns" checked> Nouns (NOUN)</label>
+                <label><input type="checkbox" id="explorePosAdjectives" checked> Adjectives (ADJ)</label>
+                <label><input type="checkbox" id="explorePosVerbs" checked> Verbs (VERB)</label>
+              </div>
             </div>
             <div class="form-group col-12">
               <button type="submit" class="submit-btn">Run Harvesting & Score Pipeline</button>

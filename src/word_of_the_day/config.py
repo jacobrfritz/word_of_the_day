@@ -78,6 +78,17 @@ class Settings(BaseSettings):
     limit: int = Field(default=3, validation_alias="LIMIT")
     use_embeddings: bool = Field(default=True, validation_alias="USE_EMBEDDINGS")
     use_lemmatization: bool = Field(default=True, validation_alias="USE_LEMMATIZATION")
+    pos_filter_nouns: bool = Field(default=True, validation_alias="POS_FILTER_NOUNS")
+    pos_filter_adjectives: bool = Field(
+        default=True, validation_alias="POS_FILTER_ADJECTIVES"
+    )
+    pos_filter_verbs: bool = Field(default=True, validation_alias="POS_FILTER_VERBS")
+    min_word_length: int | None = Field(
+        default=None, validation_alias="MIN_WORD_LENGTH"
+    )
+    max_word_length: int | None = Field(
+        default=None, validation_alias="MAX_WORD_LENGTH"
+    )
     embedding_model: str = Field(
         default="all-MiniLM-L6-v2", validation_alias="EMBEDDING_MODEL"
     )
@@ -127,13 +138,21 @@ class Settings(BaseSettings):
     smtp_port: int = Field(default=587, validation_alias="SMTP_PORT")
     smtp_username: str = Field(default="", validation_alias="SMTP_USERNAME")
     smtp_password: str = Field(default="", validation_alias="SMTP_PASSWORD")
-    smtp_from_email: str = Field(default="noreply@wordoftheday.com", validation_alias="SMTP_FROM_EMAIL")
+    smtp_from_email: str = Field(
+        default="noreply@wordoftheday.com", validation_alias="SMTP_FROM_EMAIL"
+    )
     smtp_from_name: str = Field(default="word.", validation_alias="SMTP_FROM_NAME")
     smtp_use_tls: bool = Field(default=True, validation_alias="SMTP_USE_TLS")
     smtp_use_ssl: bool = Field(default=False, validation_alias="SMTP_USE_SSL")
-    smtp_max_emails_per_day: int = Field(default=200, validation_alias="SMTP_MAX_EMAILS_PER_DAY")
-    smtp_admin_notification_email: str | None = Field(default=None, validation_alias="SMTP_ADMIN_NOTIFICATION_EMAIL")
-    app_base_url: str = Field(default="http://localhost:8000", validation_alias="APP_BASE_URL")
+    smtp_max_emails_per_day: int = Field(
+        default=200, validation_alias="SMTP_MAX_EMAILS_PER_DAY"
+    )
+    smtp_admin_notification_email: str | None = Field(
+        default=None, validation_alias="SMTP_ADMIN_NOTIFICATION_EMAIL"
+    )
+    app_base_url: str = Field(
+        default="http://localhost:8000", validation_alias="APP_BASE_URL"
+    )
 
     # Admin configuration
     admin_password: str = Field(default="admin123", validation_alias="ADMIN_PASSWORD")
@@ -144,6 +163,25 @@ class Settings(BaseSettings):
         if isinstance(v, str) and not v.strip():
             return "admin123"
         return v or "admin123"
+
+    @field_validator(
+        "wikipedia_app_name",
+        "wikipedia_contact_email",
+        "wikipedia_version",
+        "poetry_db_app_name",
+        "poetry_db_contact_email",
+        "poetry_db_version",
+        "min_word_length",
+        "max_word_length",
+        "db_path",
+        "smtp_admin_notification_email",
+        mode="before",
+    )
+    @classmethod
+    def empty_string_to_none(cls, v: Any) -> Any:
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
 
 
 class SettingsProxy:

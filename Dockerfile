@@ -64,6 +64,7 @@ COPY --from=builder /app/.venv /app/.venv
 # This runs after the virtual environment is copied, but BEFORE any project source code is copied.
 # This ensures that editing src/ files doesn't trigger a redownload of the ML model!
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')" && \
+    python -m nltk.downloader -d /usr/share/nltk_data averaged_perceptron_tagger_eng universal_tagset && \
     chown -R appuser:appgroup /app/cache/huggingface
 
 # Copy static assets and metadata/cache files

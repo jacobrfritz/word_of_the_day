@@ -2,8 +2,13 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-from word_of_the_day import DictionaryClient, WordCandidate, WordOfTheDayPipeline
+from word_of_the_day import (
+    DictionaryClient,
+    TFIDFScorer,
+    WordCandidate,
+    WordOfTheDayPipeline,
+    ZipfScorer,
+)
 
 
 def test_pipeline_stop_words_loading_iterable() -> None:
@@ -51,7 +56,9 @@ def test_pipeline_stop_words_loading_failure(
 
 def test_pipeline_clean_text() -> None:
     """Verifies text cleaning logic (lowercasing, punctuation, stop words)."""
-    pipeline = WordOfTheDayPipeline(stop_words={"the", "a", "is"}, use_lemmatization=False)
+    pipeline = WordOfTheDayPipeline(
+        stop_words={"the", "a", "is"}, use_lemmatization=False
+    )
 
     # Mixed case, punctuation, stop words
     raw_text = "The quick brown fox jumps! Over the lazy dog's back... Is it? YES."
@@ -72,34 +79,60 @@ def test_pipeline_clean_text() -> None:
 
 
 def test_pipeline_score_and_filter() -> None:
-    """Verifies that frequency scoring, filtering, and sorting work correctly."""
-    pipeline = WordOfTheDayPipeline(stop_words=set())
+    """Verifies that POS tagging, length filtering, and sorting work correctly."""
+    pipeline = WordOfTheDayPipeline(stop_words=set(), scorer=ZipfScorer())
 
-    # We want to test Zipf frequency scores. Let's score some words:
-    # "the" is extremely common (Zipf > 6)
-    # "and" is extremely common (Zipf > 6)
-    # "serendipity" is rare (Zipf ~ 2.5)
-    # "valid" is intermediate (Zipf ~ 4.2)
-    # "syzygy" is rare but has a score > 0 (Zipf ~ 1.4)
-    words = {"the", "and", "serendipity", "valid", "syzygy"}
+    # "the" -> DET (determiner)
+    # "and" -> CONJ (conjunction)
+    # "serendipity" -> NOUN
+    # "valid" -> ADJ
+    # "jumped" -> VERB
+    # "go" -> VERB
+    words = {"the", "and", "serendipity", "valid", "jumped", "go"}
 
-    # Default goldilocks range: 2.3 < score <= 4.0
-    scored = pipeline.score_and_filter(words)
+    # Mock settings to defaults (True for NOUN, ADJ, VERB; None for lengths)
+    with patch("word_of_the_day.pipeline.settings") as mock_settings:
+        mock_settings.pos_filter_nouns = True
+        mock_settings.pos_filter_adjectives = True
+        mock_settings.pos_filter_verbs = True
+        mock_settings.min_word_length = None
+        mock_settings.max_word_length = None
 
-    # "serendipity" should be in the list.
-    # "the" and "and" should be filtered out (too common, > 4.0).
-    # "syzygy" should be filtered out (too rare, <= 2.3).
-    # "valid" should be filtered out (too common, > 4.0).
-    assert len(scored) == 1
-    assert scored[0][0] == "serendipity"
-    assert 2.3 < scored[0][1] <= 4.0
+        scored = pipeline.score_and_filter(words)
+        filtered_words = {item[0] for item in scored}
 
-    # Custom range: 0.0 < score <= 10.0 (keeps all)
-    scored_all = pipeline.score_and_filter(words, min_score=0.0, max_score=10.0)
-    assert len(scored_all) == 5
-    # Should be sorted ascending by zipf score (rarest first)
-    assert scored_all[0][0] == "syzygy"  # rarest
-    assert scored_all[-1][0] in {"the", "and"}  # most common
+        # "the" (DET) and "and" (CONJ) should be filtered out
+        # "serendipity" (NOUN), "valid" (ADJ), "jumped" (VERB), "go" (VERB) should be kept
+        assert "the" not in filtered_words
+        assert "and" not in filtered_words
+        assert "serendipity" in filtered_words
+        assert "valid" in filtered_words
+        assert "jumped" in filtered_words
+        assert "go" in filtered_words
+
+        # Test length filters
+        mock_settings.min_word_length = 4
+        mock_settings.max_word_length = 10
+        scored_len = pipeline.score_and_filter(words)
+        filtered_len_words = {item[0] for item in scored_len}
+        # "go" is length 2 (filtered out by min)
+        # "serendipity" is length 11 (filtered out by max)
+        # "valid" (length 5) and "jumped" (length 6) should be kept
+        assert "go" not in filtered_len_words
+        assert "serendipity" not in filtered_len_words
+        assert "valid" in filtered_len_words
+        assert "jumped" in filtered_len_words
+
+        # Test toggles: disable nouns
+        mock_settings.min_word_length = None
+        mock_settings.max_word_length = None
+        mock_settings.pos_filter_nouns = False
+        scored_no_nouns = pipeline.score_and_filter(words)
+        filtered_no_nouns = {item[0] for item in scored_no_nouns}
+        assert "serendipity" not in filtered_no_nouns
+        assert "valid" in filtered_no_nouns
+        assert "jumped" in filtered_no_nouns
+        assert "go" in filtered_no_nouns
 
 
 def test_pipeline_validate_candidates() -> None:
@@ -122,7 +155,7 @@ def test_pipeline_validate_candidates() -> None:
     mock_dict_client.get_word_definition.side_effect = get_def_mock
 
     pipeline = WordOfTheDayPipeline(
-        stop_words=set(), dictionary_client=mock_dict_client
+        stop_words=set(), dictionary_client=mock_dict_client, scorer=ZipfScorer()
     )
 
     candidates = [
@@ -159,7 +192,9 @@ def test_pipeline_find_candidates_full_run() -> None:
     )
 
     pipeline = WordOfTheDayPipeline(
-        stop_words={"the", "and"}, dictionary_client=mock_dict_client
+        stop_words={"the", "and"},
+        dictionary_client=mock_dict_client,
+        scorer=ZipfScorer(),
     )
 
     # Input text containing serendipity
@@ -212,7 +247,7 @@ def test_pipeline_validate_candidates_skips_invalid_to_fulfill_limit() -> None:
     mock_dict_client.get_word_definition.side_effect = get_def_mock
 
     pipeline = WordOfTheDayPipeline(
-        stop_words=set(), dictionary_client=mock_dict_client
+        stop_words=set(), dictionary_client=mock_dict_client, scorer=ZipfScorer()
     )
 
     candidates = [
@@ -328,3 +363,63 @@ def test_pipeline_lemmatization_and_stop_words() -> None:
     assert "jump" not in cleaned
     assert "jumping" not in cleaned
 
+
+def test_pipeline_tfidf_scorer_multiple_documents() -> None:
+    """Verifies that the pipeline correctly uses TFIDFScorer on multiple documents."""
+    mock_dict_client = MagicMock(spec=DictionaryClient)
+    mock_dict_client.get_word_definition.return_value = (
+        True,
+        "test def",
+        "test origin",
+    )
+
+    pipeline = WordOfTheDayPipeline(
+        stop_words={"the", "and"},
+        dictionary_client=mock_dict_client,
+        use_lemmatization=True,
+    )
+    assert isinstance(pipeline.scorer, TFIDFScorer)
+
+    documents = [
+        "the cats were jumping on the roof",
+        "and dogs were running in the garden",
+    ]
+    candidates = pipeline.find_candidates(documents, limit=8)
+    # Both "cats/cat" and "dogs/dog" are nouns, should be extracted and validated
+    assert len(candidates) >= 1
+    words = {c.word for c in candidates}
+    assert "cat" in words or "dog" in words
+
+
+def test_pipeline_seen_words_cache_drops_invalid() -> None:
+    """Verifies that the seen words cache filters out known invalid words early,
+    preventing any dictionary API calls for them.
+    """
+    mock_dict_client = MagicMock(spec=DictionaryClient)
+    mock_dict_client.get_word_definition.return_value = (True, "valid word", None)
+
+    # Mock storage to return cached values
+    mock_storage = MagicMock()
+
+    # Mock get_cached_definition: "invalidword" is known to be invalid (False, ...)
+    def get_cached_def(word: str):
+        if word == "invalidword":
+            return False, "Not a valid word", None
+        return None
+
+    mock_storage.get_cached_definition.side_effect = get_cached_def
+
+    pipeline = WordOfTheDayPipeline(
+        stop_words=set(),
+        dictionary_client=mock_dict_client,
+        storage=mock_storage,
+    )
+
+    # Run find_candidates with "invalidword" and "validword"
+    # Note: "invalidword" should be dropped early by score_candidates because it is known invalid in the cache
+    scored = pipeline.score_candidates(["invalidword validword"])
+
+    # "invalidword" should not be in scored candidates because of the cache filter
+    candidate_words = {w for w, _ in scored}
+    assert "invalidword" not in candidate_words
+    assert "validword" in candidate_words

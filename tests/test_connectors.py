@@ -3,7 +3,6 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
-
 from word_of_the_day.connectors import (
     Connector,
     WikipediaAPIError,
@@ -117,9 +116,9 @@ def test_fetch_text_corpus_success() -> None:
         side_effect=[mock_summary_response, mock_text_response]
     )
 
-    corpus = client.fetch_text_corpus()
+    corpus = client.fetch_documents()
 
-    assert corpus == "Full text of Python article."
+    assert corpus == ["Full text of Python article."]
     assert client.client.get.call_count == 2
     client.close()
 

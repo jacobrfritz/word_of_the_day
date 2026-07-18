@@ -631,6 +631,11 @@ class ExploreRequest(BaseModel):
     limit: int | None = 5
     use_embeddings: bool | None = True
     use_lemmatization: bool | None = True
+    min_word_length: int | None = None
+    max_word_length: int | None = None
+    pos_filter_nouns: bool | None = True
+    pos_filter_adjectives: bool | None = True
+    pos_filter_verbs: bool | None = True
 
 
 @app.post("/api/admin/login")
@@ -817,7 +822,7 @@ def admin_send_email(
     storage: Storage = Depends(get_storage),
     _: bool = Depends(verify_admin),
 ) -> dict[str, Any]:
-    from .email_sender import send_daily_emails, DailyEmailLimitExceededError
+    from .email_sender import DailyEmailLimitExceededError, send_daily_emails
 
     date_str = payload.date or datetime.now().strftime("%Y-%m-%d")
 
@@ -838,9 +843,7 @@ def admin_send_email(
         )
 
     try:
-        sent_count = send_daily_emails(
-            date_str, storage, force=payload.force or False
-        )
+        sent_count = send_daily_emails(date_str, storage, force=payload.force or False)
         return {
             "status": "success",
             "message": f"Successfully sent daily email to {sent_count} subscribers.",
@@ -853,9 +856,7 @@ def admin_send_email(
         )
     except Exception as e:
         logger.error(f"Failed to send daily emails: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to send emails: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to send emails: {str(e)}")
 
 
 @app.get("/api/admin/logs")
@@ -900,16 +901,16 @@ def admin_explore(
     if not connectors:
         raise HTTPException(status_code=400, detail="No valid connectors initialized")
 
-    source_texts: dict[str, str] = {}
+    source_docs: dict[str, list[str]] = {}
     with WordSourceGenerator(connectors) as generator:
         by_connector = generator.fetch_sources_by_connector(count=1, ignore_errors=True)
         if isinstance(by_connector, dict):
             for conn, texts in by_connector.items():
                 conn_name = conn.connector_name()
-                source_texts[map_source_name(conn_name)] = "\n\n".join(texts)
+                source_docs[map_source_name(conn_name)] = texts
         else:
             content = generator.fetch_sources(count=1, ignore_errors=True)
-            source_texts["Unknown"] = content
+            source_docs["Unknown"] = [content] if content else []
 
     scorer = get_word_scorer(
         use_embeddings=payload.use_embeddings or False,
@@ -936,15 +937,20 @@ def admin_explore(
         scorer=scorer, storage=storage, use_lemmatization=use_lemma
     ) as pipeline:
         all_scored = []
-        for source_name, text in source_texts.items():
-            if not text.strip():
+        for source_name, docs in source_docs.items():
+            if not docs:
                 continue
             scored = pipeline.score_candidates(
-                text,
+                docs,
                 min_score=payload.min_score or 2.3,
                 max_score=payload.max_score or 4.0,
                 shuffle=False,
                 is_reusable_cb=is_reusable_cb,
+                min_word_length=payload.min_word_length,
+                max_word_length=payload.max_word_length,
+                pos_filter_nouns=payload.pos_filter_nouns,
+                pos_filter_adjectives=payload.pos_filter_adjectives,
+                pos_filter_verbs=payload.pos_filter_verbs,
             )
             for word, score in scored:
                 all_scored.append((source_name, word, score))

@@ -14,12 +14,12 @@ class Connector(Protocol):
         """
         ...
 
-    def fetch_text_corpus(self) -> str:
+    def fetch_documents(self) -> list[str]:
         """
-        Fetches raw text content from the source.
+        Fetches discrete documents from the source.
 
         Returns:
-            A string containing the fetched text content.
+            A list of strings, where each string represents a document.
         """
         ...
 

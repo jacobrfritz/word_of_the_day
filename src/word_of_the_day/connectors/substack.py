@@ -232,7 +232,7 @@ class SubstackClient(Connector):
 
         return unique_feeds
 
-    def fetch_rss_feed_content(self, feed_url: str) -> str:
+    def fetch_rss_feed_documents(self, feed_url: str) -> list[str]:
         """
         Fetches an RSS feed and extracts text content from items.
 
@@ -240,7 +240,7 @@ class SubstackClient(Connector):
             feed_url: The URL of the RSS feed.
 
         Returns:
-            A string containing the concatenated text of the posts.
+            A list of strings containing the text of the posts.
         """
 
         def make_request() -> httpx.Response:
@@ -299,7 +299,7 @@ class SubstackClient(Connector):
             if parts:
                 post_texts.append(" - ".join(parts))
 
-        return "\n\n".join(post_texts)
+        return post_texts
 
     def _clean_text(self, text: str) -> str:
         if not text:
@@ -312,13 +312,13 @@ class SubstackClient(Connector):
         clean = re.sub(r"\s+", " ", clean)
         return clean.strip()
 
-    def fetch_text_corpus(self) -> str:
+    def fetch_documents(self) -> list[str]:
         """
         Discovers trending Substack feeds for the configured category and
-        fetches/combines text content from their latest posts.
+        fetches/combines text content from their latest posts as discrete documents.
 
         Returns:
-            A string containing all fetched text joined by double newlines.
+            A list of strings, where each string represents a post.
         """
         logger.info(
             f"Discovering trending Substack feeds in category: '{self.category}'"
@@ -344,22 +344,22 @@ class SubstackClient(Connector):
             f"(out of {len(feed_urls)} discovered)"
         )
 
-        corpora: list[str] = []
+        documents: list[str] = []
         for feed_url in selected_feeds:
             try:
-                feed_text = self.fetch_rss_feed_content(feed_url)
-                if feed_text:
-                    corpora.append(feed_text)
+                feed_docs = self.fetch_rss_feed_documents(feed_url)
+                if feed_docs:
+                    documents.extend(feed_docs)
             except Exception as exc:
                 logger.error(f"Failed to fetch content from RSS feed {feed_url}: {exc}")
                 continue
 
-        if not corpora:
+        if not documents:
             raise SubstackAPIError(
                 "Failed to retrieve any content from any Substack RSS feed."
             )
 
-        return "\n\n=== NEW PUBLICATION FEED ===\n\n".join(corpora)
+        return documents
 
     def close(self) -> None:
         """Cleanly close the underlying HTTPX connection pool."""

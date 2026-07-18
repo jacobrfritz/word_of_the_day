@@ -3,7 +3,6 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
-
 from word_of_the_day.connectors import (
     Connector,
     PoetryDBAPIError,
@@ -47,7 +46,7 @@ def test_poetry_db_client_initialization() -> None:
 
 
 @patch("time.sleep", return_value=None)
-def test_fetch_text_corpus_global_success(mock_sleep: MagicMock) -> None:
+def test_fetch_documents_global_success(mock_sleep: MagicMock) -> None:
     """Verifies successful global random poem retrieval (author='any')."""
     client = PoetryDBClient(author="any")
 
@@ -66,15 +65,15 @@ def test_fetch_text_corpus_global_success(mock_sleep: MagicMock) -> None:
 
     client.client.get = MagicMock(return_value=mock_response)
 
-    corpus = client.fetch_text_corpus()
+    corpus = client.fetch_documents()
 
-    assert corpus == "Take this kiss upon the brow!\nAnd, in parting from you now,"
+    assert corpus == ["Take this kiss upon the brow!\nAnd, in parting from you now,"]
     client.client.get.assert_called_once_with("/random/1")
     client.close()
 
 
 @patch("time.sleep", return_value=None)
-def test_fetch_text_corpus_author_success(mock_sleep: MagicMock) -> None:
+def test_fetch_documents_author_success(mock_sleep: MagicMock) -> None:
     """Verifies successful two-step retrieval for a specific author."""
     client = PoetryDBClient(author="Edgar Allan Poe")
 
@@ -100,9 +99,9 @@ def test_fetch_text_corpus_author_success(mock_sleep: MagicMock) -> None:
         side_effect=[mock_titles_response, mock_poem_response]
     )
 
-    corpus = client.fetch_text_corpus()
+    corpus = client.fetch_documents()
 
-    assert corpus == "Take this kiss upon the brow!\nAnd, in parting from you now,"
+    assert corpus == ["Take this kiss upon the brow!\nAnd, in parting from you now,"]
     assert client.client.get.call_count == 2
 
     # Verify parameters were quoted correctly
@@ -115,7 +114,7 @@ def test_fetch_text_corpus_author_success(mock_sleep: MagicMock) -> None:
 
 
 @patch("time.sleep", return_value=None)
-def test_fetch_text_corpus_curated_random_author(mock_sleep: MagicMock) -> None:
+def test_fetch_documents_curated_random_author(mock_sleep: MagicMock) -> None:
     """Verifies that author=None resolves to a curated classic poet."""
     client = PoetryDBClient(author=None)
 
@@ -148,15 +147,15 @@ def test_fetch_text_corpus_curated_random_author(mock_sleep: MagicMock) -> None:
 
     patch_path = "word_of_the_day.connectors.poetry_db.random.choice"
     with patch(patch_path, side_effect=side_effect) as mock_choice:
-        corpus = client.fetch_text_corpus()
+        corpus = client.fetch_documents()
         mock_choice.assert_any_call(DEFAULT_CLASSIC_POETS)
 
-    assert corpus == "Classic verse 1\nClassic verse 2"
+    assert corpus == ["Classic verse 1\nClassic verse 2"]
     client.close()
 
 
 @patch("time.sleep", return_value=None)
-def test_fetch_text_corpus_author_list(mock_sleep: MagicMock) -> None:
+def test_fetch_documents_author_list(mock_sleep: MagicMock) -> None:
     """Verifies that author list resolves to a random choice from the list."""
     author_list = ["Edgar Allan Poe", "Lord Byron"]
     client = PoetryDBClient(author=author_list)
@@ -190,18 +189,18 @@ def test_fetch_text_corpus_author_list(mock_sleep: MagicMock) -> None:
 
     patch_path = "word_of_the_day.connectors.poetry_db.random.choice"
     with patch(patch_path, side_effect=side_effect) as mock_choice:
-        corpus = client.fetch_text_corpus()
+        corpus = client.fetch_documents()
         mock_choice.assert_any_call(author_list)
 
-    assert corpus == "List line 1\nList line 2"
+    assert corpus == ["List line 1\nList line 2"]
     client.close()
 
 
-def test_fetch_text_corpus_empty_author_list() -> None:
+def test_fetch_documents_empty_author_list() -> None:
     """Verifies that an empty author list raises an exception."""
     client = PoetryDBClient(author=[])
     with pytest.raises(PoetryDBAPIError) as exc_info:
-        client.fetch_text_corpus()
+        client.fetch_documents()
     assert "Author list cannot be empty" in str(exc_info.value)
     client.close()
 
@@ -217,7 +216,7 @@ def test_rate_limiting() -> None:
     client.client.get = MagicMock(return_value=mock_response)
 
     with pytest.raises(PoetryDBRateLimitError) as exc_info:
-        client.fetch_text_corpus()
+        client.fetch_documents()
 
     assert exc_info.value.retry_after == 15
     assert "Please retry after 15 seconds." in str(exc_info.value)
@@ -235,7 +234,7 @@ def test_rate_limiting_invalid_retry_after() -> None:
     client.client.get = MagicMock(return_value=mock_response)
 
     with pytest.raises(PoetryDBRateLimitError) as exc_info:
-        client.fetch_text_corpus()
+        client.fetch_documents()
 
     assert exc_info.value.retry_after == 60
     client.close()
@@ -259,8 +258,8 @@ def test_transient_network_error_retry_success(mock_sleep: MagicMock) -> None:
         ]
     )
 
-    corpus = client.fetch_text_corpus()
-    assert corpus == "Line 1"
+    corpus = client.fetch_documents()
+    assert corpus == ["Line 1"]
     assert client.client.get.call_count == 3
     assert mock_sleep.call_count == 2
     client.close()
@@ -277,7 +276,7 @@ def test_transient_network_error_exhausted(mock_sleep: MagicMock) -> None:
     )
 
     with pytest.raises(PoetryDBNetworkError) as exc_info:
-        client.fetch_text_corpus()
+        client.fetch_documents()
 
     assert "Connection failed after 3 attempts" in str(exc_info.value)
     assert client.client.get.call_count == 3
@@ -296,7 +295,7 @@ def test_api_status_error_response() -> None:
     client.client.get = MagicMock(return_value=mock_response)
 
     with pytest.raises(PoetryDBAPIError) as exc_info:
-        client.fetch_text_corpus()
+        client.fetch_documents()
 
     assert "API Error 404: Not found" in str(exc_info.value)
     client.close()
@@ -313,7 +312,7 @@ def test_api_unexpected_non_list() -> None:
     client.client.get = MagicMock(return_value=mock_response)
 
     with pytest.raises(PoetryDBAPIError) as exc_info:
-        client.fetch_text_corpus()
+        client.fetch_documents()
 
     assert "Unexpected empty response from PoetryDB." in str(exc_info.value)
     client.close()
@@ -330,7 +329,7 @@ def test_api_missing_lines() -> None:
     client.client.get = MagicMock(return_value=mock_response)
 
     with pytest.raises(PoetryDBAPIError) as exc_info:
-        client.fetch_text_corpus()
+        client.fetch_documents()
 
     assert "Poem format is invalid: missing 'lines'" in str(exc_info.value)
     client.close()
@@ -357,6 +356,6 @@ def test_unreachable_state_retries_zero() -> None:
     """Verifies that max_retries <= 0 raises PoetryDBAPIError immediately."""
     client = PoetryDBClient(author="any", max_retries=0)
     with pytest.raises(PoetryDBAPIError) as exc_info:
-        client.fetch_text_corpus()
+        client.fetch_documents()
     assert "Unreachable state" in str(exc_info.value)
     client.close()

@@ -3,7 +3,13 @@ from .dictionary import DictionaryClient
 from .generator import WordSourceGenerator
 from .logger import get_logger, setup_logging
 from .pipeline import WordCandidate, WordOfTheDayPipeline
-from .scorers import CompositeScorer, EmbeddingScorer, WordScorer, ZipfScorer
+from .scorers import (
+    CompositeScorer,
+    EmbeddingScorer,
+    TFIDFScorer,
+    WordScorer,
+    ZipfScorer,
+)
 from .storage import Storage, WordOfTheDayRecord
 
 __all__ = [
@@ -15,6 +21,7 @@ __all__ = [
     "WordOfTheDayPipeline",
     "WordScorer",
     "ZipfScorer",
+    "TFIDFScorer",
     "EmbeddingScorer",
     "CompositeScorer",
     "Storage",

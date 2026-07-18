@@ -2,7 +2,6 @@ import urllib.error
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from word_of_the_day.connectors import (
     Connector,
     GutenbergAPIError,
@@ -51,15 +50,15 @@ def test_gutenberg_client_initialization() -> None:
 
 @patch("gutenbergpy.textget.get_text_by_id")
 @patch("gutenbergpy.textget.strip_headers")
-def test_fetch_text_corpus_success(mock_strip: MagicMock, mock_get: MagicMock) -> None:
+def test_fetch_documents_success(mock_strip: MagicMock, mock_get: MagicMock) -> None:
     """Verifies successful downloading and cleaning of a Gutenberg book."""
     mock_get.return_value = b"raw compressed book data"
     mock_strip.return_value = b"cleaned book content"
 
     client = GutenbergClient(book_id=2701)
-    text = client.fetch_text_corpus()
+    text = client.fetch_documents()
 
-    assert text == "cleaned book content"
+    assert text == ["cleaned book content"]
     mock_get.assert_called_once_with(2701)
     mock_strip.assert_called_once_with(b"raw compressed book data")
 
@@ -80,7 +79,7 @@ def test_rate_limiting(mock_get: MagicMock) -> None:
     client = GutenbergClient(book_id=2701, max_retries=1)
 
     with pytest.raises(GutenbergRateLimitError) as exc_info:
-        client.fetch_text_corpus()
+        client.fetch_documents()
 
     assert "Rate limited while downloading Gutenberg book 2701" in str(exc_info.value)
 
@@ -94,7 +93,7 @@ def test_network_error(mock_get: MagicMock) -> None:
     client = GutenbergClient(book_id=2701, max_retries=1)
 
     with pytest.raises(GutenbergNetworkError) as exc_info:
-        client.fetch_text_corpus()
+        client.fetch_documents()
 
     assert "Network error while downloading Gutenberg book 2701" in str(exc_info.value)
 
@@ -108,7 +107,7 @@ def test_gutenbergpy_internal_error_specific_id(mock_get: MagicMock) -> None:
     client = GutenbergClient(book_id=2701, max_retries=2)
 
     with pytest.raises(GutenbergAPIError) as exc_info:
-        client.fetch_text_corpus()
+        client.fetch_documents()
 
     assert "could not be resolved or downloaded by gutenbergpy" in str(exc_info.value)
 
@@ -127,9 +126,9 @@ def test_gutenbergpy_internal_error_random_discovery(
     mock_strip.return_value = b"success text"
 
     client = GutenbergClient(book_id=None, max_retries=3)
-    text = client.fetch_text_corpus()
+    text = client.fetch_documents()
 
-    assert text == "success text"
+    assert text == ["success text"]
     assert mock_get.call_count == 2
 
 
