@@ -5,7 +5,7 @@ import sqlite3
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, NotRequired, TypedDict
 
 from .config import settings
 from .logger import get_logger
@@ -22,6 +22,9 @@ class WordOfTheDayRecord(TypedDict):
     extra_info: dict[str, Any] | None
     origin: str | None
     cluster_id: int | None
+    upvotes: NotRequired[int | None]
+    downvotes: NotRequired[int | None]
+    user_vote: NotRequired[int | None]
 
 
 class Storage:
@@ -158,7 +161,6 @@ class Storage:
             if "source" not in columns:
                 conn.execute("ALTER TABLE dictionary_cache ADD COLUMN source TEXT")
 
-
             # Create email_subscriptions table
             conn.execute(
                 """
@@ -214,6 +216,21 @@ class Storage:
                     """,
                     (now_str,),
                 )
+
+            # Create votes table to store user upvotes and downvotes
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS votes (
+                    date TEXT NOT NULL,
+                    word TEXT NOT NULL,
+                    session_id TEXT NOT NULL,
+                    vote_value INTEGER NOT NULL, -- 1 for upvote, -1 for downvote
+                    timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (date, session_id)
+                )
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_votes_word ON votes(word)")
 
             # One-time migration: delete old bootstrapped words from wotd_history
             cursor = conn.cursor()
@@ -740,3 +757,62 @@ class Storage:
                 (date_str, cleaned_email, now_str),
             )
             conn.commit()
+
+    def record_vote(
+        self, date: str, word: str, session_id: str, vote_value: int
+    ) -> None:
+        """
+        Records or updates a user's vote. If vote_value is 0, deletes the vote.
+        """
+        with self._connect() as conn:
+            if vote_value == 0:
+                conn.execute(
+                    "DELETE FROM votes WHERE date = ? AND session_id = ?",
+                    (date, session_id),
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO votes (date, word, session_id, vote_value, timestamp)
+                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    """,
+                    (date, word, session_id, vote_value),
+                )
+            conn.commit()
+
+    def get_vote_counts(self, date: str) -> dict[str, int]:
+        """
+        Returns the count of upvotes and downvotes for a given date.
+        """
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT
+                    SUM(CASE WHEN vote_value = 1 THEN 1 ELSE 0 END) as upvotes,
+                    SUM(CASE WHEN vote_value = -1 THEN 1 ELSE 0 END) as downvotes
+                FROM votes
+                WHERE date = ?
+                """,
+                (date,),
+            )
+            row = cursor.fetchone()
+            if row:
+                return {
+                    "upvotes": row[0] or 0,
+                    "downvotes": row[1] or 0,
+                }
+            return {"upvotes": 0, "downvotes": 0}
+
+    def get_user_vote(self, date: str, session_id: str) -> int | None:
+        """
+        Returns the vote value (-1, 1, or None) cast by a session on a date.
+        """
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT vote_value FROM votes WHERE date = ? AND session_id = ?",
+                (date, session_id),
+            )
+            row = cursor.fetchone()
+            return row[0] if row else None

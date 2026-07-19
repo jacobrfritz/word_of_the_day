@@ -71,22 +71,40 @@
             <span class="part-of-speech" id="wordPos">unknown</span>
           </div>
 
-          <!-- Action Buttons -->
-          <div class="action-buttons">
-            <button class="action-btn" id="speakBtn" aria-label="Listen to pronunciation" title="Listen">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M11 5L6 9H2v6h4l5 4V5z"></path>
-                <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
-                <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
-              </svg>
-            </button>
-            <button class="action-btn" id="copyBtn" aria-label="Copy word and definition" title="Copy">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-              </svg>
-              <span class="tooltip">Copied!</span>
-            </button>
+          <!-- Action & Voting Buttons -->
+          <div class="header-controls">
+            <!-- Voting Widget -->
+            <div class="vote-widget" id="voteWidget">
+              <button class="vote-btn" id="upvoteBtn" aria-label="Upvote" title="Upvote this word">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 15l-6-6-6 6"/>
+                </svg>
+              </button>
+              <span class="vote-score" id="voteScore">0</span>
+              <button class="vote-btn" id="downvoteBtn" aria-label="Downvote" title="Downvote this word">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M6 9l6 6 6-6"/>
+                </svg>
+              </button>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="action-buttons">
+              <button class="action-btn" id="speakBtn" aria-label="Listen to pronunciation" title="Listen">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M11 5L6 9H2v6h4l5 4V5z"></path>
+                  <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                  <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+                </svg>
+              </button>
+              <button class="action-btn" id="copyBtn" aria-label="Copy word and definition" title="Copy">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+                <span class="tooltip">Copied!</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -340,6 +358,7 @@
     </div>
   </footer>
 
+  <div class="toast-container" id="toastContainer"></div>
   <script src="/static/index.js?v=14" defer></script>
 </body>
 </html>

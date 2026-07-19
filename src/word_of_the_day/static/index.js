@@ -34,6 +34,9 @@ const elements = {
   calendarBody: document.getElementById('calendarBody'),
   embeddingCanvas: document.getElementById('embeddingCanvas'),
   embeddingTooltip: document.getElementById('embeddingTooltip'),
+  upvoteBtn: document.getElementById('upvoteBtn'),
+  downvoteBtn: document.getElementById('downvoteBtn'),
+  voteScore: document.getElementById('voteScore'),
 };
 
 // ── Embedding space visualization state ──────────────────────────────────────
@@ -87,7 +90,8 @@ async function loadWord(date) {
   setLoader(true);
   elements.errorContainer.style.display = 'none';
   try {
-    const response = await fetch(`/api/word?date=${date}`);
+    const sessionId = getSessionId();
+    const response = await fetch(`/api/word?date=${date}&session_id=${sessionId}`);
     if (!response.ok) {
       throw new Error('Not found');
     }
@@ -135,6 +139,9 @@ async function loadWord(date) {
       scoreVal = `Zipf: ${data.extra_info.zipf_score.toFixed(2)}`;
     }
     elements.wordScore.textContent = scoreVal;
+
+    // Render voting details
+    updateVoteUI(data.upvotes || 0, data.downvotes || 0, data.user_vote);
 
     // Highlight in history sidebar and calendar
     updateSidebarSelection(date);
@@ -896,6 +903,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (elements.speakBtn) elements.speakBtn.addEventListener('click', speakWord);
   if (elements.copyBtn) elements.copyBtn.addEventListener('click', copyWordDetails);
 
+  // Bind voting buttons
+  if (elements.upvoteBtn) {
+    elements.upvoteBtn.addEventListener('click', () => castVote('up'));
+  }
+  if (elements.downvoteBtn) {
+    elements.downvoteBtn.addEventListener('click', () => castVote('down'));
+  }
+
   // Populate trigger date label with initially loaded date
   updateTriggerDate(targetDate);
 
@@ -1029,3 +1044,100 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Initialize Embedding Space Visualization
   initEmbeddingVisual();
 });
+
+
+// ── Voting System Helpers ───────────────────────────────────────────────────
+
+function getSessionId() {
+  let sessionId = localStorage.getItem('wotd_session_id');
+  if (!sessionId) {
+    sessionId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+    localStorage.setItem('wotd_session_id', sessionId);
+  }
+  return sessionId;
+}
+
+function updateVoteUI(upvotes, downvotes, userVote) {
+  if (!elements.voteScore || !elements.upvoteBtn || !elements.downvoteBtn) return;
+  const netScore = upvotes - downvotes;
+  elements.voteScore.textContent = netScore;
+
+  // Style score color
+  elements.voteScore.classList.remove('positive', 'negative');
+  if (netScore > 0) {
+    elements.voteScore.classList.add('positive');
+  } else if (netScore < 0) {
+    elements.voteScore.classList.add('negative');
+  }
+
+  // Toggle active state classes
+  elements.upvoteBtn.classList.toggle('active-up', userVote === 1);
+  elements.downvoteBtn.classList.toggle('active-down', userVote === -1);
+}
+
+async function castVote(direction) {
+  if (!activeDate || activeDate === '-') return;
+
+  const sessionId = getSessionId();
+  const upvoteBtn = elements.upvoteBtn;
+  const downvoteBtn = elements.downvoteBtn;
+
+  // Determine target action (support retracting active vote)
+  let targetDirection = direction;
+  if (direction === 'up' && upvoteBtn.classList.contains('active-up')) {
+    targetDirection = 'clear';
+  } else if (direction === 'down' && downvoteBtn.classList.contains('active-down')) {
+    targetDirection = 'clear';
+  }
+
+  try {
+    const response = await fetch('/api/vote', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        date: activeDate,
+        direction: targetDirection,
+        session_id: sessionId,
+      }),
+    });
+
+    if (!response.ok) {
+      if (response.status === 429) {
+        const errorData = await response.json();
+        showToast(errorData.detail || 'Too many votes. Please wait.', 'error');
+        return;
+      }
+      throw new Error('Failed to record vote.');
+    }
+
+    const result = await response.json();
+    updateVoteUI(result.upvotes, result.downvotes, result.user_vote);
+  } catch (err) {
+    console.error('Error voting:', err);
+    showToast('Failed to record vote. Please check your connection.', 'error');
+  }
+}
+
+function showToast(message, type = 'info') {
+  const container = document.getElementById('toastContainer');
+  if (!container) return;
+
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.innerHTML = `<span>${message}</span>`;
+  container.appendChild(toast);
+
+  // Trigger CSS transition animation
+  setTimeout(() => toast.classList.add('show'), 50);
+
+  // Remove toast automatically
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 400);
+  }, 3500);
+}

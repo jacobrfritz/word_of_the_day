@@ -344,3 +344,31 @@ def test_cluster_id_save_retrieve_and_rotation(temp_db: Path) -> None:
     assert storage.get_last_used_cluster_id() == 4
     # With optimal_k=5, 4 + 1 wraps around to 0
     assert storage.get_next_cluster_id(optimal_k=5) == 0
+
+
+def test_voting_storage(temp_db: Path) -> None:
+    storage = Storage(db_path=temp_db, bootstrap=False)
+
+    # Initially, counts should be 0, and user vote should be None
+    assert storage.get_vote_counts("2026-07-10") == {"upvotes": 0, "downvotes": 0}
+    assert storage.get_user_vote("2026-07-10", "sess_1") is None
+
+    # Cast an upvote
+    storage.record_vote("2026-07-10", "serendipity", "sess_1", 1)
+    assert storage.get_vote_counts("2026-07-10") == {"upvotes": 1, "downvotes": 0}
+    assert storage.get_user_vote("2026-07-10", "sess_1") == 1
+
+    # Cast a downvote from another session
+    storage.record_vote("2026-07-10", "serendipity", "sess_2", -1)
+    assert storage.get_vote_counts("2026-07-10") == {"upvotes": 1, "downvotes": 1}
+    assert storage.get_user_vote("2026-07-10", "sess_2") == -1
+
+    # Update vote from downvote to upvote
+    storage.record_vote("2026-07-10", "serendipity", "sess_2", 1)
+    assert storage.get_vote_counts("2026-07-10") == {"upvotes": 2, "downvotes": 0}
+    assert storage.get_user_vote("2026-07-10", "sess_2") == 1
+
+    # Retract vote
+    storage.record_vote("2026-07-10", "serendipity", "sess_2", 0)
+    assert storage.get_vote_counts("2026-07-10") == {"upvotes": 1, "downvotes": 0}
+    assert storage.get_user_vote("2026-07-10", "sess_2") is None

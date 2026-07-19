@@ -1,6 +1,8 @@
 # src/word_of_the_day/api.py
 import re
+import time
 import uuid
+from collections import defaultdict
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -134,6 +136,104 @@ def subscribe(
     return {"success": True, "message": "Successfully subscribed."}
 
 
+class VoteRequest(BaseModel):
+    date: str
+    direction: str  # "up", "down", or "clear"
+    session_id: str
+
+
+# In-memory sliding-window rate limiter for voting
+vote_rate_limit_store: dict[str, list[float]] = defaultdict(list)
+
+
+def check_rate_limit(request: Request, session_id: str) -> None:
+    now = time.time()
+    ip = request.client.host if request.client else "unknown"
+    key = f"{ip}:{session_id}"
+
+    # Clean up old timestamps (older than 60 seconds)
+    vote_rate_limit_store[key] = [t for t in vote_rate_limit_store[key] if now - t < 60]
+
+    # Limit to 10 votes per 60 seconds
+    if len(vote_rate_limit_store[key]) >= 10:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many votes cast. Please wait a moment before voting again.",
+        )
+
+    vote_rate_limit_store[key].append(now)
+
+
+@app.post("/api/vote")
+def cast_vote(
+    vote_req: VoteRequest,
+    request: Request,
+    storage: Storage = Depends(get_storage),
+) -> dict[str, Any]:
+    # 1. Enforce rate limiting
+    check_rate_limit(request, vote_req.session_id)
+
+    # 2. Validate date format
+    try:
+        datetime.strptime(vote_req.date, "%Y-%m-%d")
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400, detail="Invalid date format. Expected YYYY-MM-DD."
+        ) from e
+
+    # 3. Check if the date has a Word of the Day record
+    record = storage.get_word_of_the_day(vote_req.date)
+    if not record:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No Word of the Day has been selected for date {vote_req.date}.",
+        )
+
+    # 4. Validate direction
+    direction = vote_req.direction.lower().strip()
+    if direction not in ("up", "down", "clear"):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid vote direction. Must be 'up', 'down', or 'clear'.",
+        )
+
+    # 5. Map direction to numeric vote value
+    vote_value = 0
+    if direction == "up":
+        vote_value = 1
+    elif direction == "down":
+        vote_value = -1
+
+    # 6. Validate session_id
+    session_id = vote_req.session_id.strip()
+    if not session_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Session ID is required.",
+        )
+
+    # 7. Record vote in storage
+    storage.record_vote(
+        date=vote_req.date,
+        word=record["word"],
+        session_id=session_id,
+        vote_value=vote_value,
+    )
+
+    # 8. Retrieve updated vote data
+    counts = storage.get_vote_counts(vote_req.date)
+    user_vote = storage.get_user_vote(vote_req.date, session_id)
+
+    return {
+        "success": True,
+        "date": vote_req.date,
+        "word": record["word"],
+        "upvotes": counts["upvotes"],
+        "downvotes": counts["downvotes"],
+        "user_vote": user_vote,
+    }
+
+
 @app.get("/api/unsubscribe", response_class=HTMLResponse)
 def unsubscribe(
     token: str = Query(..., description="The unique unsubscribe token"),
@@ -238,6 +338,10 @@ def get_word(
     date: str | None = Query(
         None, description="Date in YYYY-MM-DD format (defaults to today)"
     ),
+    session_id: str | None = Query(
+        None,
+        description="Optional anonymous session identifier to retrieve user vote status",
+    ),
     storage: Storage = Depends(get_storage),
 ) -> WordOfTheDayRecord:
     """
@@ -301,6 +405,16 @@ def get_word(
             logger.error(f"Error auto-resolving definition for '{word}': {e}")
 
     record["source"] = map_source_name(record["source"])
+
+    # Retrieve vote details
+    counts = storage.get_vote_counts(date)
+    user_vote = storage.get_user_vote(date, session_id) if session_id else None
+
+    # Inject vote status
+    record["upvotes"] = counts["upvotes"]
+    record["downvotes"] = counts["downvotes"]
+    record["user_vote"] = user_vote
+
     return record
 
 

@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-
 from word_of_the_day.api import app
 from word_of_the_day.storage import Storage
 
@@ -190,7 +189,9 @@ def test_serve_html_subscribe(client: TestClient) -> None:
     assert "Daily Digest" in response.text
 
 
-def test_api_subscribe_and_unsubscribe(client: TestClient, temp_storage: Storage) -> None:
+def test_api_subscribe_and_unsubscribe(
+    client: TestClient, temp_storage: Storage
+) -> None:
     # 1. Test POST /api/subscribe with invalid email
     response = client.post("/api/subscribe", json={"email": "invalid-email"})
     assert response.status_code == 400
@@ -359,6 +360,7 @@ def test_scheduled_word_for_next_day_not_regenerated(temp_storage: Storage) -> N
 
 def test_admin_send_email(client: TestClient, temp_storage: Storage) -> None:
     import hashlib
+
     from word_of_the_day.config import settings
 
     # Setup test credentials
@@ -375,7 +377,9 @@ def test_admin_send_email(client: TestClient, temp_storage: Storage) -> None:
     settings.smtp_backend = "console"
     try:
         # 2. Authenticated request to /api/admin/send-email returns 404 if no word exists
-        resp = client.post("/api/admin/send-email", json={"date": "2026-07-16"}, headers=headers)
+        resp = client.post(
+            "/api/admin/send-email", json={"date": "2026-07-16"}, headers=headers
+        )
         assert resp.status_code == 404
         assert "no word of the day has been selected" in resp.json()["detail"].lower()
 
@@ -385,7 +389,7 @@ def test_admin_send_email(client: TestClient, temp_storage: Storage) -> None:
             word="testing",
             definition="running tests",
             source="Manual",
-            score=3.0
+            score=3.0,
         )
 
         # Subscribe users
@@ -393,25 +397,123 @@ def test_admin_send_email(client: TestClient, temp_storage: Storage) -> None:
         temp_storage.add_subscription("sub2@example.com", "token2")
 
         # 3. Authenticated request sends email to active subscribers
-        resp = client.post("/api/admin/send-email", json={"date": "2026-07-16"}, headers=headers)
+        resp = client.post(
+            "/api/admin/send-email", json={"date": "2026-07-16"}, headers=headers
+        )
         assert resp.status_code == 200
         res_json = resp.json()
         assert res_json["status"] == "success"
         assert res_json["sent_count"] == 2
-        assert "successfully sent daily email to 2 subscribers" in res_json["message"].lower()
+        assert (
+            "successfully sent daily email to 2 subscribers"
+            in res_json["message"].lower()
+        )
 
         # Verify they received it
         assert temp_storage.has_received_email("2026-07-16", "sub1@example.com")
         assert temp_storage.has_received_email("2026-07-16", "sub2@example.com")
 
         # 4. Sending again without force should send to 0 subscribers
-        resp = client.post("/api/admin/send-email", json={"date": "2026-07-16"}, headers=headers)
+        resp = client.post(
+            "/api/admin/send-email", json={"date": "2026-07-16"}, headers=headers
+        )
         assert resp.status_code == 200
         assert resp.json()["sent_count"] == 0
 
         # 5. Sending again WITH force should send to 2 subscribers
-        resp = client.post("/api/admin/send-email", json={"date": "2026-07-16", "force": True}, headers=headers)
+        resp = client.post(
+            "/api/admin/send-email",
+            json={"date": "2026-07-16", "force": True},
+            headers=headers,
+        )
         assert resp.status_code == 200
         assert resp.json()["sent_count"] == 2
     finally:
         settings.smtp_backend = orig_backend
+
+
+def test_api_voting(client: TestClient, temp_storage: Storage) -> None:
+    # 1. Setup a word of the day
+    temp_storage.save_word_of_the_day(
+        date="2026-07-10",
+        word="serendipity",
+        definition="happy chance",
+        source="wikipedia",
+        score=3.5,
+    )
+
+    # Get word without session ID
+    response = client.get("/api/word?date=2026-07-10")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["upvotes"] == 0
+    assert data["downvotes"] == 0
+    assert data["user_vote"] is None
+
+    # Cast an upvote via API
+    resp = client.post(
+        "/api/vote",
+        json={"date": "2026-07-10", "direction": "up", "session_id": "test_sess"},
+    )
+    assert resp.status_code == 200
+    res_data = resp.json()
+    assert res_data["success"] is True
+    assert res_data["upvotes"] == 1
+    assert res_data["downvotes"] == 0
+    assert res_data["user_vote"] == 1
+
+    # Fetch word WITH session ID
+    response = client.get("/api/word?date=2026-07-10&session_id=test_sess")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["upvotes"] == 1
+    assert data["downvotes"] == 0
+    assert data["user_vote"] == 1
+
+    # Downvote from a different session ID
+    resp = client.post(
+        "/api/vote",
+        json={"date": "2026-07-10", "direction": "down", "session_id": "other_sess"},
+    )
+    assert resp.status_code == 200
+    res_data = resp.json()
+    assert res_data["upvotes"] == 1
+    assert res_data["downvotes"] == 1
+    assert res_data["user_vote"] == -1
+
+    # Clear vote
+    resp = client.post(
+        "/api/vote",
+        json={"date": "2026-07-10", "direction": "clear", "session_id": "other_sess"},
+    )
+    assert resp.status_code == 200
+    res_data = resp.json()
+    assert res_data["upvotes"] == 1
+    assert res_data["downvotes"] == 0
+    assert res_data["user_vote"] is None
+
+    # Test error cases
+    # Non-existent date
+    resp = client.post(
+        "/api/vote",
+        json={"date": "2026-07-15", "direction": "up", "session_id": "test_sess"},
+    )
+    assert resp.status_code == 404
+
+    # Invalid direction
+    resp = client.post(
+        "/api/vote",
+        json={"date": "2026-07-10", "direction": "invalid", "session_id": "test_sess"},
+    )
+    assert resp.status_code == 400
+
+    # Rate limiting (10 votes per session)
+    for _ in range(15):
+        resp = client.post(
+            "/api/vote",
+            json={"date": "2026-07-10", "direction": "up", "session_id": "spam_sess"},
+        )
+        if resp.status_code == 429:
+            break
+    else:
+        pytest.fail("Rate limiter did not trigger 429")
