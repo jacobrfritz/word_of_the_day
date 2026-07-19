@@ -338,7 +338,8 @@ async function handleExplore(e) {
             data-word="${cand.word}"
             data-definition="${cand.definition}"
             data-origin="${cand.origin || ''}"
-            data-source="${cand.source}">
+            data-source="${cand.source}"
+            data-score="${cand.score !== undefined && cand.score !== null ? cand.score : ''}">
             Use & Schedule
           </button>
         </div>
@@ -354,7 +355,7 @@ async function handleExplore(e) {
         const ds = e.target.dataset;
         const targetDate = prompt('Enter date to schedule this word (YYYY-MM-DD):', new Date().toISOString().split('T')[0]);
         if (targetDate) {
-          scheduleWordFromCandidate(targetDate, ds.word, ds.definition, ds.origin, ds.source);
+          scheduleWordFromCandidate(targetDate, ds.word, ds.definition, ds.origin, ds.source, ds.score);
         }
       });
     });
@@ -365,7 +366,7 @@ async function handleExplore(e) {
   }
 }
 
-async function scheduleWordFromCandidate(date, word, definition, origin, source) {
+async function scheduleWordFromCandidate(date, word, definition, origin, source, score) {
   try {
     const response = await fetchAdmin('/api/admin/word', {
       method: 'POST',
@@ -375,7 +376,8 @@ async function scheduleWordFromCandidate(date, word, definition, origin, source)
         word,
         definition,
         source,
-        origin: origin || null
+        origin: origin || null,
+        score: score ? parseFloat(score) : null
       })
     });
 

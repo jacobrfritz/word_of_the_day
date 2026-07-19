@@ -66,7 +66,7 @@ def test_render_word_email() -> None:
         "word": "ephemeral",
         "definition": "(adjective) Lasting a short time.",
         "source": "Gutenberg",
-        "score": 3.1234,
+        "score": 0.1234,
         "origin": "Greek ephemeros",
         "extra_info": None,
         "cluster_id": None,
@@ -78,7 +78,7 @@ def test_render_word_email() -> None:
     assert "adjective" in html
     assert "Lasting a short time." in html
     assert "Gutenberg" in html
-    assert "3.1234" in html
+    assert "0.1234" in html
     assert "Greek ephemeros" in html
     assert unsubscribe_url in html
 
@@ -195,7 +195,7 @@ def test_storage_get_sent_count_for_day(temp_storage: Storage) -> None:
         conn.execute(
             """
             INSERT INTO email_dispatch_log (date, email, sent_at)
-            VALUES 
+            VALUES
                 ('2026-07-17', 'user1@example.com', '2026-07-17T10:00:00.123456'),
                 ('2026-07-17', 'user2@example.com', '2026-07-17T12:30:15.999999'),
                 ('2026-07-18', 'user3@example.com', '2026-07-18T08:15:00.000000')
@@ -209,7 +209,9 @@ def test_storage_get_sent_count_for_day(temp_storage: Storage) -> None:
     assert temp_storage.get_sent_count_for_day("2026-07-19") == 0
 
 
-def test_email_batch_limit_capping(temp_storage: Storage, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_email_batch_limit_capping(
+    temp_storage: Storage, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from word_of_the_day.email_sender import DailyEmailLimitExceededError
 
     # Configure max emails per day to 2
@@ -234,6 +236,7 @@ def test_email_batch_limit_capping(temp_storage: Storage, monkeypatch: pytest.Mo
 
     # Verify initial sent count for today is 0
     from datetime import datetime
+
     today_str = datetime.now().strftime("%Y-%m-%d")
     assert temp_storage.get_sent_count_for_day(today_str) == 0
 
@@ -258,8 +261,11 @@ def test_email_batch_limit_capping(temp_storage: Storage, monkeypatch: pytest.Mo
         send_email_batch(subscribers, record, temp_storage)
 
 
-def test_email_batch_limit_capping_smtp(temp_storage: Storage, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_email_batch_limit_capping_smtp(
+    temp_storage: Storage, monkeypatch: pytest.MonkeyPatch
+) -> None:
     import smtplib
+
     from word_of_the_day.email_sender import DailyEmailLimitExceededError
 
     # Configure max emails per day to 1
@@ -286,21 +292,27 @@ def test_email_batch_limit_capping_smtp(temp_storage: Storage, monkeypatch: pyte
 
     # Mock smtplib.SMTP
     sent_emails = []
+
     class DummySMTP:
         def __init__(self, *args, **kwargs):
             pass
+
         def ehlo(self, *args, **kwargs):
             pass
+
         def login(self, *args, **kwargs):
             pass
+
         def send_message(self, msg):
             sent_emails.append(msg)
+
         def quit(self):
             pass
 
     monkeypatch.setattr(smtplib, "SMTP", DummySMTP)
 
     from datetime import datetime
+
     today_str = datetime.now().strftime("%Y-%m-%d")
     assert temp_storage.get_sent_count_for_day(today_str) == 0
 
@@ -315,7 +327,9 @@ def test_email_batch_limit_capping_smtp(temp_storage: Storage, monkeypatch: pyte
     assert not temp_storage.has_received_email("2026-07-17", "smtp2@example.com")
 
 
-def test_email_batch_limit_capping_with_alert(temp_storage: Storage, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_email_batch_limit_capping_with_alert(
+    temp_storage: Storage, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from word_of_the_day.email_sender import DailyEmailLimitExceededError
 
     # Configure max emails per day to 1 and set admin notification email
@@ -352,7 +366,9 @@ def test_email_batch_limit_capping_with_alert(temp_storage: Storage, monkeypatch
 
     # Check alert email was generated in logs/sent_emails/
     project_root = Path(__file__).resolve().parent.parent
-    alert_file = project_root / "logs" / "sent_emails" / "alert_2026-07-17_limit_reached.txt"
+    alert_file = (
+        project_root / "logs" / "sent_emails" / "alert_2026-07-17_limit_reached.txt"
+    )
     assert alert_file.exists()
     alert_content = alert_file.read_text(encoding="utf-8")
     assert "To: admin@example.com" in alert_content
@@ -360,7 +376,9 @@ def test_email_batch_limit_capping_with_alert(temp_storage: Storage, monkeypatch
     assert "limit of 1 has been reached" in alert_content
 
 
-def test_api_admin_send_email_limit_429(client: TestClient, temp_storage: Storage, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_api_admin_send_email_limit_429(
+    client: TestClient, temp_storage: Storage, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # Configure max emails per day to 1
     monkeypatch.setattr(settings, "smtp_max_emails_per_day", 1)
     monkeypatch.setattr(settings, "smtp_backend", "console")
@@ -375,17 +393,17 @@ def test_api_admin_send_email_limit_429(client: TestClient, temp_storage: Storag
         word="vigilance",
         definition="State of keeping careful watch.",
         source="Wikipedia",
-        score=4.0
+        score=4.0,
     )
 
     from word_of_the_day.api import verify_admin
+
     app.dependency_overrides[verify_admin] = lambda: True
 
     try:
         # Call the endpoint
         response = client.post(
-            "/api/admin/send-email",
-            json={"date": "2026-07-17", "force": False}
+            "/api/admin/send-email", json={"date": "2026-07-17", "force": False}
         )
         assert response.status_code == 429
         assert "Daily email limit reached" in response.json()["detail"]
@@ -393,7 +411,9 @@ def test_api_admin_send_email_limit_429(client: TestClient, temp_storage: Storag
         app.dependency_overrides.pop(verify_admin, None)
 
 
-def test_email_mime_headers_and_multipart_parts(temp_storage: Storage, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_email_mime_headers_and_multipart_parts(
+    temp_storage: Storage, monkeypatch: pytest.MonkeyPatch
+) -> None:
     import smtplib
 
     monkeypatch.setattr(settings, "smtp_backend", "smtp")
@@ -414,15 +434,20 @@ def test_email_mime_headers_and_multipart_parts(temp_storage: Storage, monkeypat
     }
 
     sent_emails = []
+
     class DummySMTP:
         def __init__(self, *args, **kwargs):
             pass
+
         def ehlo(self, *args, **kwargs):
             pass
+
         def login(self, *args, **kwargs):
             pass
+
         def send_message(self, msg):
             sent_emails.append(msg)
+
         def quit(self):
             pass
 

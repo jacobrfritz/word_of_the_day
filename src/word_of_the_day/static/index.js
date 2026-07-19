@@ -126,7 +126,11 @@ async function loadWord(date) {
     // Format Score nicely
     let scoreVal = '-';
     if (data.score !== null && data.score !== undefined) {
-      scoreVal = data.score.toFixed(4);
+      if (data.score > 1.0) {
+        scoreVal = `Zipf: ${data.score.toFixed(2)}`;
+      } else {
+        scoreVal = data.score.toFixed(4);
+      }
     } else if (data.extra_info && data.extra_info.zipf_score) {
       scoreVal = `Zipf: ${data.extra_info.zipf_score.toFixed(2)}`;
     }

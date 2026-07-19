@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 import nltk
 
@@ -38,3 +39,39 @@ def ensure_nltk_resources() -> None:
                     logger.error(
                         f"Failed to download required resource '{resource_name}'"
                     )
+
+
+def get_target_pos_for_date(storage: "Any", date_str: str) -> str:
+    """
+    Retrieves the sequence of previous Words of the Day before the given date_str
+    to determine the next part of speech (noun -> adjective -> verb -> noun -> ...).
+    """
+    import re
+
+    # Query history ordered by date descending
+    # We retrieve up to 50 historical records to scan back
+    try:
+        history = storage.get_history(limit=50)
+    except Exception as e:
+        logger.warning(f"Failed to retrieve history for POS alternation: {e}")
+        history = []
+
+    # Filter to records where record["date"] < date_str
+    history = [r for r in history if r["date"] < date_str]
+
+    for record in history:
+        definition = record.get("definition")
+        if not definition:
+            continue
+        pos_match = re.match(r"^\(([^)]+)\)\s*(.*)", definition)
+        if pos_match:
+            pos_val = pos_match.group(1).lower().strip()
+            if "noun" in pos_val:
+                return "adjective"
+            elif "adj" in pos_val:
+                return "verb"
+            elif "verb" in pos_val:
+                return "noun"
+
+    # Fallback to noun if no previous valid POS is found
+    return "noun"

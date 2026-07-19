@@ -637,6 +637,7 @@ class ExploreRequest(BaseModel):
     pos_filter_nouns: bool | None = True
     pos_filter_adjectives: bool | None = True
     pos_filter_verbs: bool | None = True
+    pos_alternation_enabled: bool | None = None
 
 
 @app.post("/api/admin/login")
@@ -722,9 +723,34 @@ def admin_save_word(
     if not source:
         source = "Organic"
 
+    z_score = zipf_frequency(word_clean, "en")
     score = payload.score
+
     if score is None:
-        score = zipf_frequency(word_clean, "en")
+        if settings.use_embeddings:
+            try:
+                from .main import get_word_scorer
+                from .scorers import EmbeddingScorer
+
+                scorer = get_word_scorer(
+                    use_embeddings=True,
+                    seed_csv_path=settings.seed_csv_path,
+                    cache_npz_path=settings.cache_npz_path,
+                    embedding_model=settings.embedding_model,
+                    embedding_k=settings.embedding_k,
+                )
+                if isinstance(scorer, EmbeddingScorer):
+                    score = scorer.score(word_clean)
+                    logger.info(
+                        f"Dynamically computed embedding score for manual word '{word_clean}': {score:.4f}"
+                    )
+            except Exception as e:
+                logger.error(
+                    f"Failed to dynamically compute embedding score for '{word_clean}': {e}"
+                )
+
+        if score is None:
+            score = z_score
 
     storage.save_word_of_the_day(
         date=payload.date,
@@ -732,7 +758,7 @@ def admin_save_word(
         definition=definition.strip(),
         source=source.strip(),
         score=score,
-        extra_info={"manual": True},
+        extra_info={"manual": True, "zipf_score": z_score},
         origin=origin,
     )
     return {"status": "success", "word": word_clean}
@@ -854,10 +880,12 @@ def admin_send_email(
         logger.warning(f"Daily email limit exceeded: {e}")
         raise HTTPException(
             status_code=429, detail=f"Daily email limit reached: {str(e)}"
-        )
+        ) from e
     except Exception as e:
         logger.error(f"Failed to send daily emails: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to send emails: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to send emails: {str(e)}"
+        ) from e
 
 
 @app.get("/api/admin/logs")
@@ -935,7 +963,9 @@ def admin_explore(
                 today_cluster_id = storage.get_next_cluster_id(optimal_k)
                 scorer.set_active_cluster(today_cluster_id, optimal_k)
             except Exception as exc:
-                logger.warning(f"Failed to set up dynamic seed-target clustering in explorer: {exc}")
+                logger.warning(
+                    f"Failed to set up dynamic seed-target clustering in explorer: {exc}"
+                )
         else:
             scorer.set_active_cluster(None, 0)
 
@@ -952,6 +982,28 @@ def admin_explore(
         if payload.use_lemmatization is not None
         else settings.use_lemmatization
     )
+    # Resolve POS alternation filters
+    use_pos_alt = (
+        payload.pos_alternation_enabled
+        if payload.pos_alternation_enabled is not None
+        else settings.pos_alternation_enabled
+    )
+    pos_nouns = payload.pos_filter_nouns
+    pos_adjectives = payload.pos_filter_adjectives
+    pos_verbs = payload.pos_filter_verbs
+
+    if use_pos_alt:
+        from .utils.pos import get_target_pos_for_date
+
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        target_pos = get_target_pos_for_date(storage, today_str)
+        if target_pos == "noun":
+            pos_nouns, pos_adjectives, pos_verbs = True, False, False
+        elif target_pos == "adjective":
+            pos_nouns, pos_adjectives, pos_verbs = False, True, False
+        elif target_pos == "verb":
+            pos_nouns, pos_adjectives, pos_verbs = False, False, True
+
     with WordOfTheDayPipeline(
         scorer=scorer, storage=storage, use_lemmatization=use_lemma
     ) as pipeline:
@@ -967,9 +1019,9 @@ def admin_explore(
                 is_reusable_cb=is_reusable_cb,
                 min_word_length=payload.min_word_length,
                 max_word_length=payload.max_word_length,
-                pos_filter_nouns=payload.pos_filter_nouns,
-                pos_filter_adjectives=payload.pos_filter_adjectives,
-                pos_filter_verbs=payload.pos_filter_verbs,
+                pos_filter_nouns=pos_nouns,
+                pos_filter_adjectives=pos_adjectives,
+                pos_filter_verbs=pos_verbs,
             )
             for word, score in scored:
                 all_scored.append((source_name, word, score))
@@ -986,6 +1038,9 @@ def admin_explore(
             db_reusable,
             min_score=min_val_score,
             max_score=max_val_score,
+            pos_filter_nouns=pos_nouns,
+            pos_filter_adjectives=pos_adjectives,
+            pos_filter_verbs=pos_verbs,
         )
         for word, score in db_scored:
             db_source = db_word_to_source.get(word.lower()) or "Database"
@@ -1014,12 +1069,20 @@ def admin_explore(
         merged_scored = [(src, w, s) for w, (src, s) in seen.items()]
         merged_scored.sort(key=lambda item: item[2], reverse=scorer.higher_is_better)
 
-        validated = pipeline.validate_candidates(merged_scored, limit=payload.limit or 5)
+        validated = pipeline.validate_candidates(
+            merged_scored,
+            limit=payload.limit or 5,
+            pos_filter_nouns=pos_nouns,
+            pos_filter_adjectives=pos_adjectives,
+            pos_filter_verbs=pos_verbs,
+        )
 
         word_to_source = {w: src for src, w, _ in merged_scored}
         for c in validated:
             raw_source = word_to_source.get(c.word, "Unknown")
-            final_source = raw_source[3:] if raw_source.startswith("db:") else raw_source
+            final_source = (
+                raw_source[3:] if raw_source.startswith("db:") else raw_source
+            )
             candidates_result.append(
                 {
                     "word": c.word,

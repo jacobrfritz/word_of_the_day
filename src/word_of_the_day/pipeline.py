@@ -302,6 +302,9 @@ class WordOfTheDayPipeline:
         self,
         scored_candidates: list[tuple[str, float]] | list[tuple[str, str, float]],
         limit: int = 1,
+        pos_filter_nouns: bool | None = None,
+        pos_filter_adjectives: bool | None = None,
+        pos_filter_verbs: bool | None = None,
     ) -> list[WordCandidate]:
         """
         Lazily validates scored candidates using the dictionary client.
@@ -351,6 +354,55 @@ class WordOfTheDayPipeline:
             cache_updates.append({"word": word, "is_valid": is_valid})
 
             if is_valid:
+                # POS post-validation check
+                if (
+                    pos_filter_nouns is not None
+                    or pos_filter_adjectives is not None
+                    or pos_filter_verbs is not None
+                ):
+                    nouns = (
+                        pos_filter_nouns
+                        if pos_filter_nouns is not None
+                        else settings.pos_filter_nouns
+                    )
+                    adjectives = (
+                        pos_filter_adjectives
+                        if pos_filter_adjectives is not None
+                        else settings.pos_filter_adjectives
+                    )
+                    verbs = (
+                        pos_filter_verbs
+                        if pos_filter_verbs is not None
+                        else settings.pos_filter_verbs
+                    )
+
+                    # If we are restricting POS (i.e. not all are True)
+                    if not (nouns and adjectives and verbs):
+                        pos_match = re.match(r"^\(([^)]+)\)\s*(.*)", info)
+                        dict_pos = (
+                            pos_match.group(1).lower().strip() if pos_match else None
+                        )
+                        if dict_pos:
+                            is_noun = "noun" in dict_pos
+                            is_adj = "adj" in dict_pos
+                            is_verb = "verb" in dict_pos
+
+                            allowed = False
+                            if nouns and is_noun:
+                                allowed = True
+                            if adjectives and is_adj:
+                                allowed = True
+                            if verbs and is_verb:
+                                allowed = True
+
+                            if not allowed:
+                                logger.debug(
+                                    f"Skipped word '{word}' ({score:.2f}) because dictionary POS "
+                                    f"'{dict_pos}' does not match target POS filters "
+                                    f"(nouns={nouns}, adjectives={adjectives}, verbs={verbs})."
+                                )
+                                continue
+
                 # If using standard ZipfScorer, the score *is* the zipf score.
                 # Otherwise (e.g. EmbeddingScorer/TFIDFScorer), we fetch the real Zipf score
                 # for display and set the 'score' attribute to the similarity/TF-IDF score.

@@ -24,6 +24,7 @@ logger = get_logger(__name__)
 
 class DailyEmailLimitExceededError(ValueError):
     """Exception raised when the daily email dispatch limit is reached."""
+
     pass
 
 
@@ -60,7 +61,10 @@ def render_word_email(record: WordOfTheDayRecord, unsubscribe_url: str) -> str:
     # Parse score
     extra = record.get("extra_info")
     if record["score"] is not None:
-        score_val = f"{record['score']:.4f}"
+        if record["score"] > 1.0:
+            score_val = f"Zipf: {record['score']:.2f}"
+        else:
+            score_val = f"{record['score']:.4f}"
     elif extra is not None and isinstance(extra.get("zipf_score"), int | float):
         score_val = f"Zipf: {extra['zipf_score']:.2f}"
     else:
@@ -177,7 +181,10 @@ def render_word_plain_text(record: WordOfTheDayRecord, unsubscribe_url: str) -> 
 
     extra = record.get("extra_info")
     if record["score"] is not None:
-        score_val = f"{record['score']:.4f}"
+        if record["score"] > 1.0:
+            score_val = f"Zipf: {record['score']:.2f}"
+        else:
+            score_val = f"{record['score']:.4f}"
     elif extra is not None and isinstance(extra.get("zipf_score"), int | float):
         score_val = f"Zipf: {extra['zipf_score']:.2f}"
     else:
@@ -190,7 +197,7 @@ def render_word_plain_text(record: WordOfTheDayRecord, unsubscribe_url: str) -> 
         text += f"Etymology & Origin:\n{origin}\n\n"
     text += f"Discovery Source: {source}\n"
     text += f"Word Score: {score_val}\n\n"
-    text += f"You are receiving this because you subscribed to the word. daily digest.\n"
+    text += "You are receiving this because you subscribed to the word. daily digest.\n"
     text += f"Unsubscribe from this list: {unsubscribe_url}\n"
     return text
 
@@ -224,7 +231,9 @@ def send_limit_alert_email(
         sent_dir.mkdir(parents=True, exist_ok=True)
         alert_file = sent_dir / f"alert_{date_str}_limit_reached.txt"
         try:
-            alert_file.write_text(f"To: {admin_email}\nSubject: {subject}\n\n{body}", encoding="utf-8")
+            alert_file.write_text(
+                f"To: {admin_email}\nSubject: {subject}\n\n{body}", encoding="utf-8"
+            )
             logger.info(f"[Console Alert Email] Saved alert preview to {alert_file}")
         except Exception as e:
             logger.error(f"Failed writing console alert email: {e}")
@@ -241,9 +250,13 @@ def send_limit_alert_email(
         should_close = False
         if not local_server:
             if settings.smtp_use_ssl:
-                local_server = smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, timeout=10)
+                local_server = smtplib.SMTP_SSL(
+                    settings.smtp_host, settings.smtp_port, timeout=10
+                )
             else:
-                local_server = smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10)
+                local_server = smtplib.SMTP(
+                    settings.smtp_host, settings.smtp_port, timeout=10
+                )
 
             local_server.ehlo()
             if settings.smtp_use_tls and not settings.smtp_use_ssl:
@@ -371,7 +384,9 @@ def send_email_batch(
                 logger.warning(
                     f"Daily email limit reached ({settings.smtp_max_emails_per_day}). Stopping SMTP dispatch."
                 )
-                send_limit_alert_email(record["date"], settings.smtp_max_emails_per_day, smtp_server=server)
+                send_limit_alert_email(
+                    record["date"], settings.smtp_max_emails_per_day, smtp_server=server
+                )
                 raise DailyEmailLimitExceededError(
                     f"Daily email limit of {settings.smtp_max_emails_per_day} reached. Dispatch halted."
                 )

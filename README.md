@@ -156,6 +156,33 @@ Key environment configurations available in `.env`:
 | `LOG_LEVEL_CONSOLE` | `INFO` | Console handler log level. |
 | `LOG_LEVEL_FILE` | `DEBUG` | File handler log level. |
 
+### Running the App Locally
+
+Once you have completed the installation and configured your `.env` file, you can start the application locally:
+
+#### 1. Start the API Server & Dashboards
+```bash
+uv run word_of_the_day --mode api
+```
+The application will launch on `127.0.0.1:8000`. You can access the following interfaces:
+- **Dashboard & Newsletter Portal**: http://127.0.0.1:8000
+- **Admin Dashboard**: http://127.0.0.1:8000/admin (Default password: `admin123`)
+
+#### 2. Run Other Pipeline Modes
+You can also invoke other operations via the CLI:
+- **List Scored Candidate Words**:
+  ```bash
+  uv run word_of_the_day --mode list --source wikipedia
+  ```
+- **Interactive Daily Word Selection**:
+  ```bash
+  uv run word_of_the_day --mode interactive
+  ```
+- **Automated Daily Generation**:
+  ```bash
+  uv run word_of_the_day --mode auto
+  ```
+
 ---
 
 ## Usage & Commands

@@ -248,6 +248,7 @@ def run_pipeline(
     mode: str,
     date: str,
     storage: "Storage",
+    pos_alternation: bool | None = None,
 ) -> None:
     """Executes the core text retrieval and Word of the Day parsing pipeline."""
     selected_sources = [source] if isinstance(source, str) else list(source)
@@ -298,11 +299,17 @@ def run_pipeline(
                 content_len = len(content) if content else 0
 
         if content_len == 0:
-            logger.warning("No text corpus was retrieved. Proceeding with database candidates only.")
+            logger.warning(
+                "No text corpus was retrieved. Proceeding with database candidates only."
+            )
         else:
-            logger.info(f"Downloaded text corpus ({content_len} chars across documents).")
+            logger.info(
+                f"Downloaded text corpus ({content_len} chars across documents)."
+            )
     except Exception as e:
-        logger.warning(f"API/Connector Error: {e}. Proceeding with database candidates only.")
+        logger.warning(
+            f"API/Connector Error: {e}. Proceeding with database candidates only."
+        )
 
     # 2. Extract, score, and validate candidates
     from .pipeline import WordCandidate, WordOfTheDayPipeline
@@ -345,6 +352,37 @@ def run_pipeline(
     def is_reusable_cb(w: str) -> bool:
         return w.lower() not in used_words
 
+    # Resolve POS alternation filters
+    use_pos_alt = (
+        pos_alternation
+        if pos_alternation is not None
+        else settings.pos_alternation_enabled
+    )
+    pos_nouns = True
+    pos_adjectives = True
+    pos_verbs = True
+    target_pos_val = None
+
+    if use_pos_alt:
+        from .utils.pos import get_target_pos_for_date
+
+        target_pos_val = get_target_pos_for_date(storage, date)
+        logger.info(
+            f"POS alternation enabled. Target POS for {date} is: {target_pos_val.upper()}"
+        )
+        if target_pos_val == "noun":
+            pos_nouns = True
+            pos_adjectives = False
+            pos_verbs = False
+        elif target_pos_val == "adjective":
+            pos_nouns = False
+            pos_adjectives = True
+            pos_verbs = False
+        elif target_pos_val == "verb":
+            pos_nouns = False
+            pos_adjectives = False
+            pos_verbs = True
+
     with WordOfTheDayPipeline(
         scorer=scorer, storage=storage, use_lemmatization=use_lemmatization
     ) as pipeline:
@@ -358,6 +396,9 @@ def run_pipeline(
                 max_score=max_score,
                 shuffle=shuffle,
                 is_reusable_cb=is_reusable_cb,
+                pos_filter_nouns=pos_nouns,
+                pos_filter_adjectives=pos_adjectives,
+                pos_filter_verbs=pos_verbs,
             )
             for word, score in scored:
                 all_scored.append((source_name, word, score))
@@ -371,9 +412,13 @@ def run_pipeline(
             db_reusable,
             min_score=min_score,
             max_score=max_score,
+            pos_filter_nouns=pos_nouns,
+            pos_filter_adjectives=pos_adjectives,
+            pos_filter_verbs=pos_verbs,
         )
         if shuffle:
             import random
+
             random.shuffle(db_scored)
         for word, score in db_scored:
             db_source = db_word_to_source.get(word.lower()) or "Database"
@@ -407,14 +452,22 @@ def run_pipeline(
         merged_scored.sort(key=lambda item: item[2], reverse=scorer.higher_is_better)
 
         validate_limit = limit
-        validated = pipeline.validate_candidates(merged_scored, limit=validate_limit)
+        validated = pipeline.validate_candidates(
+            merged_scored,
+            limit=validate_limit,
+            pos_filter_nouns=pos_nouns,
+            pos_filter_adjectives=pos_adjectives,
+            pos_filter_verbs=pos_verbs,
+        )
 
         # Re-associate validated words with their source names.
         word_to_source: dict[str, str] = {w: src for src, w, _ in merged_scored}
         all_candidates = []
         for c in validated:
             raw_source = word_to_source.get(c.word, "Unknown")
-            final_source = raw_source[3:] if raw_source.startswith("db:") else raw_source
+            final_source = (
+                raw_source[3:] if raw_source.startswith("db:") else raw_source
+            )
             all_candidates.append((final_source, c))
 
         if mode == "list":
@@ -482,6 +535,7 @@ def run_pipeline(
 
         if mode == "auto":
             from .selectors import ScoredWord
+
             scored_candidates = [
                 ScoredWord(
                     word=c.word,
@@ -507,6 +561,7 @@ def run_pipeline(
                     "zipf_score": chosen.zipf_score,
                     "auto": True,
                     "cluster_id": today_cluster_id,
+                    "target_pos": target_pos_val,
                 },
                 origin=chosen.origin,
                 cluster_id=today_cluster_id,
@@ -558,6 +613,7 @@ def run_pipeline(
                             "zipf_score": chosen.zipf_score,
                             "interactive": True,
                             "cluster_id": today_cluster_id,
+                            "target_pos": target_pos_val,
                         },
                         origin=chosen.origin,
                         cluster_id=today_cluster_id,
@@ -595,6 +651,7 @@ def run(
     date: str | None = None,
     word: str | None = None,
     db_path: str | None = None,
+    pos_alternation: bool | None = None,
 ) -> None:
     """Core application runner coordinating configuration overrides and execution modes."""
     load_dotenv()
@@ -706,4 +763,5 @@ def run(
         mode=mode,
         date=date,
         storage=storage,
+        pos_alternation=pos_alternation,
     )

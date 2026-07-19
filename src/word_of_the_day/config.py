@@ -83,7 +83,12 @@ class Settings(BaseSettings):
     selection_temperature: float = Field(
         default=1.0, validation_alias="SELECTION_TEMPERATURE"
     )
-    cluster_knn_enabled: bool = Field(default=True, validation_alias="CLUSTER_KNN_ENABLED")
+    cluster_knn_enabled: bool = Field(
+        default=False, validation_alias="CLUSTER_KNN_ENABLED"
+    )
+    pos_alternation_enabled: bool = Field(
+        default=True, validation_alias="POS_ALTERNATION_ENABLED"
+    )
     use_lemmatization: bool = Field(default=True, validation_alias="USE_LEMMATIZATION")
     pos_filter_nouns: bool = Field(default=True, validation_alias="POS_FILTER_NOUNS")
     pos_filter_adjectives: bool = Field(

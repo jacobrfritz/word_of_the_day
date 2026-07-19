@@ -132,6 +132,19 @@ def parse_args(args: list[str]) -> argparse.Namespace:
         help="Disable sentence embeddings similarity and use Zipf scoring only.",
     )
     parser.add_argument(
+        "--pos-alternation",
+        dest="pos_alternation",
+        action="store_true",
+        default=None,
+        help="Enable automatic Part-of-Speech alternation (default: True).",
+    )
+    parser.add_argument(
+        "--no-pos-alternation",
+        dest="pos_alternation",
+        action="store_false",
+        help="Disable automatic Part-of-Speech alternation.",
+    )
+    parser.add_argument(
         "--use-lemmatization",
         action="store_true",
         default=True,
@@ -248,6 +261,7 @@ def main() -> None:
         date=parsed_args.date,
         word=parsed_args.word,
         db_path=parsed_args.db_path,
+        pos_alternation=parsed_args.pos_alternation,
     )
 
 
