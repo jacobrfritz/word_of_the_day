@@ -1,5 +1,6 @@
 services:
-  word-of-the-day:
+  word_of_the_day:
+    image: hateyoujake/word_of_the_day:latest
     build:
       context: .
       dockerfile: Dockerfile
