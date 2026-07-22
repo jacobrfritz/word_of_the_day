@@ -257,18 +257,110 @@ All development tasks are pre-configured in the `Makefile`.
 
 ## Container Deployment
 
-The application is containerized with production security defaults:
-- **Non-Root User**: Runs under `appuser` (UID `10001`).
-- **Pre-baked ML Model**: SentenceTransformer `all-MiniLM-L6-v2` is embedded in the Docker image.
-- **Auto-Bootstrap**: Automatically fetches seed words on startup if missing.
-- **Health Checks**: Liveness/readiness probe on `/healthz`.
+The application is containerized and published on Docker Hub as `hateyoujake/word_of_the_day:latest` with production-grade security defaults:
+- **Official Image**: `hateyoujake/word_of_the_day:latest`
+- **Non-Root User**: The container runs under `appuser` (UID `10001`), ensuring compatibility with strict container security policies (e.g., Kubernetes root restrictions).
+- **Pre-baked ML Model**: The `all-MiniLM-L6-v2` SentenceTransformer model is downloaded during the Docker build and cached in the image, so the container starts without requiring a network download.
+- **Auto-Bootstrap**: On startup, if no seed CSV is found at `SEED_CSV_PATH`, the container automatically runs `bootstrap_word_of_the_day.py` to seed the word list from the Merriam-Webster podcast RSS feed.
+- **Health Checks**: A liveness/readiness probe checks `/healthz` on a 30s interval.
 
-### Docker Compose
+### Pulling Pre-built Container
+
+You can pull the official pre-built image directly from Docker Hub:
+```bash
+docker pull hateyoujake/word_of_the_day:latest
+```
+
+### Running with Docker Compose (Recommended)
+
+Starts the FastAPI server using `hateyoujake/word_of_the_day:latest` with a host bind mount (mapping the project root) for the SQLite database, embeddings, and seed CSV:
 
 ```bash
 docker compose up -d
 ```
-Access the application at [http://localhost:8000](http://localhost:8000).
+
+The portal will be available at [http://localhost:8001](http://localhost:8001) (or `http://localhost:8000`) and the admin dashboard at `/admin`.
+
+The host project root directory is bind mounted to `/app/db` inside the container. The environment in `docker-compose.yml` sets the database and seed paths to this directory:
+```yaml
+services:
+  word_of_the_day:
+    image: hateyoujake/word_of_the_day:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    volumes:
+      - .:/app/db
+      - ./logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - API_HOST=0.0.0.0
+      - API_PORT=8001
+      - DB_PATH=/app/db/word_of_the_day.db
+      - SEED_CSV_PATH=/app/db/word_of_the_day_embeddings.csv
+      - CACHE_NPZ_PATH=/app/db/word_of_the_day_embeddings.npz
+```
+
+### Running with Docker CLI
+
+1. **Build the Image**
+   ```bash
+   docker build -t hateyoujake/word_of_the_day:latest .
+   ```
+
+2. **Run the API Server**
+   ```bash
+   docker run -d \
+     -p 8001:8001 \
+     --name wotd-api \
+     -v $(pwd):/app/db \
+     -v $(pwd)/logs:/app/logs \
+     -e DB_PATH=/app/db/word_of_the_day.db \
+     -e SEED_CSV_PATH=/app/db/word_of_the_day_embeddings.csv \
+     -e CACHE_NPZ_PATH=/app/db/word_of_the_day_embeddings.npz \
+     --env-file .env \
+     hateyoujake/word_of_the_day:latest
+   ```
+
+3. **Run One-off CLI Pipeline Modes**
+   ```bash
+   # List candidates
+   docker run --rm hateyoujake/word_of_the_day:latest --mode list
+
+   # Auto-select today's word
+   docker run --rm \
+     -v $(pwd):/app/db \
+     -e DB_PATH=/app/db/word_of_the_day.db \
+     hateyoujake/word_of_the_day:latest --mode auto
+   ```
+
+### Multi-Platform & macOS Builds (Docker Buildx)
+
+When building on macOS (especially Apple Silicon M1/M2/M3/M4 or Intel Macs), `docker buildx` is recommended to ensure correct cross-platform compilation and multi-architecture image creation (`linux/amd64` and `linux/arm64`).
+
+1. **Create and Initialize a Buildx Builder Instance** (required once on macOS):
+   ```bash
+   docker buildx create --name wotd-builder --use
+   docker buildx inspect --bootstrap
+   ```
+
+2. **Build and Load Image Locally on macOS**:
+   To build for your local Mac architecture and load it directly into Docker Desktop:
+   ```bash
+   docker buildx build -t hateyoujake/word_of_the_day:latest --load .
+   ```
+
+3. **Build and Push Multi-Platform Manifest (amd64 + arm64)**:
+   To cross-compile and push the multi-architecture manifest list to Docker Hub:
+   ```bash
+   docker buildx build \
+     --platform linux/amd64,linux/arm64 \
+     -t hateyoujake/word_of_the_day:latest \
+     --push .
+   ```
 
 ---
 
