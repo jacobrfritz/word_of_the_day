@@ -1,0 +1,14 @@
+<form id="subscribeForm" novalidate class="subscription-form">
+  <div class="input-group">
+    <input type="email" id="subscriberEmail" name="email" required placeholder="you@example.com" autocomplete="email" aria-label="Email address" aria-describedby="subscribeError">
+    <button type="submit" class="subscribe-btn">
+      <span>Subscribe</span>
+    </button>
+  </div>
+  <div id="subscribeSuccess" class="success-msg" style="display: none;">
+    <span aria-hidden="true">✓</span> Successfully subscribed!
+  </div>
+  <div id="subscribeError" class="error-msg" style="display: none;">
+    <span aria-hidden="true">❌</span> Please enter a valid email address.
+  </div>
+</form>

@@ -78,6 +78,7 @@ function formatFriendlyDate(dateStr) {
 
 // Show/hide loader
 function setLoader(state) {
+  if (!elements.loadingOverlay) return;
   if (state) {
     elements.loadingOverlay.classList.add('active');
   } else {
@@ -87,8 +88,9 @@ function setLoader(state) {
 
 // Fetch and display specific word. Returns true on success, false on failure.
 async function loadWord(date) {
+  if (!elements.wordCard) return false;
   setLoader(true);
-  elements.errorContainer.style.display = 'none';
+  if (elements.errorContainer) elements.errorContainer.style.display = 'none';
   try {
     const sessionId = getSessionId();
     const response = await fetch(`/api/word?date=${date}&session_id=${sessionId}`);
@@ -99,7 +101,7 @@ async function loadWord(date) {
 
     // Update UI
     activeDate = date;
-    elements.wordDate.textContent = formatFriendlyDate(data.date);
+    if (elements.wordDate) elements.wordDate.textContent = formatFriendlyDate(data.date);
 
     // Parse definition and part of speech
     let wordStr = data.word;
@@ -113,19 +115,21 @@ async function loadWord(date) {
       defStr = posMatch[2];
     }
 
-    elements.wordText.textContent = wordStr;
-    elements.wordPos.textContent = posStr;
-    elements.wordDefinition.textContent = defStr;
+    if (elements.wordText) elements.wordText.textContent = wordStr;
+    if (elements.wordPos) elements.wordPos.textContent = posStr;
+    if (elements.wordDefinition) elements.wordDefinition.textContent = defStr;
 
-    if (data.origin && data.origin.trim() !== '' && data.origin.trim().toLowerCase() !== 'not available') {
-      elements.wordOriginText.textContent = data.origin;
-      elements.wordOriginBox.style.display = 'block';
-    } else {
-      elements.wordOriginText.textContent = 'Not available';
-      elements.wordOriginBox.style.display = 'none';
+    if (elements.wordOriginText && elements.wordOriginBox) {
+      if (data.origin && data.origin.trim() !== '' && data.origin.trim().toLowerCase() !== 'not available') {
+        elements.wordOriginText.textContent = data.origin;
+        elements.wordOriginBox.style.display = 'block';
+      } else {
+        elements.wordOriginText.textContent = 'Not available';
+        elements.wordOriginBox.style.display = 'none';
+      }
     }
 
-    elements.wordSource.textContent = data.source;
+    if (elements.wordSource) elements.wordSource.textContent = data.source;
 
     // Format Score nicely
     let scoreVal = '-';
@@ -138,7 +142,7 @@ async function loadWord(date) {
     } else if (data.extra_info && data.extra_info.zipf_score) {
       scoreVal = `Zipf: ${data.extra_info.zipf_score.toFixed(2)}`;
     }
-    elements.wordScore.textContent = scoreVal;
+    if (elements.wordScore) elements.wordScore.textContent = scoreVal;
 
     // Render voting details
     updateVoteUI(data.upvotes || 0, data.downvotes || 0, data.user_vote);
@@ -150,8 +154,10 @@ async function loadWord(date) {
     drawEmbeddingSpace();
     return true;
   } catch (err) {
-    elements.errorContainer.style.display = 'block';
-    elements.errorContainer.textContent = `No Word of the Day was chosen for ${formatFriendlyDate(date)}.`;
+    if (elements.errorContainer) {
+      elements.errorContainer.style.display = 'block';
+      elements.errorContainer.textContent = `No Word of the Day was chosen for ${formatFriendlyDate(date)}.`;
+    }
     return false;
   } finally {
     setLoader(false);
@@ -160,6 +166,7 @@ async function loadWord(date) {
 
 // Fetch and update recent word list
 async function loadHistory() {
+  if (!elements.historyList) return;
   try {
     const response = await fetch('/api/history?limit=30');
     if (!response.ok) return;
@@ -172,23 +179,21 @@ async function loadHistory() {
     }
 
     data.forEach(item => {
-      const div = document.createElement('div');
-      div.className = `history-item ${item.date === activeDate ? 'active' : ''}`;
-      div.dataset.date = item.date;
+      const a = document.createElement('a');
+      a.className = `history-item ${item.date === activeDate ? 'active' : ''}`;
+      a.href = `/word/${encodeURIComponent(item.word.toLowerCase())}`;
+      a.dataset.date = item.date;
 
       const parts = item.date.split('-');
       const shortDate = `${parts[1]}/${parts[2]}`; // MM/DD
 
-      div.innerHTML = `
+      a.innerHTML = `
         <span class="hist-word">${item.word}</span>
         <span class="hist-date">${shortDate}</span>
+        <span class="hist-details">See Details &rarr;</span>
       `;
 
-      div.addEventListener('click', () => {
-        loadWord(item.date);
-      });
-
-      elements.historyList.appendChild(div);
+      elements.historyList.appendChild(a);
     });
   } catch (err) {
     console.error('Error fetching history:', err);
@@ -226,6 +231,8 @@ const MONTH_NAMES = [
 ];
 
 function renderCalendar() {
+  if (!elements.calMonthLabel || !elements.calendarDays) return;
+
   const year = calViewYear;
   const month = calViewMonth;
 
@@ -295,11 +302,11 @@ function renderCalendar() {
   const minDate = datesWithData.size > 0 ? [...datesWithData].sort()[0] : null;
   const maxDate = datesWithData.size > 0 ? [...datesWithData].sort().at(-1) : null;
 
-  if (minDate) {
+  if (minDate && elements.calPrev) {
     const [minY, minM] = minDate.split('-').map(Number);
     elements.calPrev.disabled = (year < minY) || (year === minY && month <= minM - 1);
   }
-  if (maxDate) {
+  if (maxDate && elements.calNext) {
     const [maxY, maxM] = maxDate.split('-').map(Number);
     elements.calNext.disabled = (year > maxY) || (year === maxY && month >= maxM - 1);
   }
@@ -307,6 +314,7 @@ function renderCalendar() {
 
 // Text to speech implementation
 function speakWord() {
+  if (!elements.wordText) return;
   const word = elements.wordText.textContent;
   if (!word || word === '-') return;
 
@@ -334,11 +342,12 @@ function speakWord() {
 
 // Copy word & definition to clipboard
 function copyWordDetails() {
+  if (!elements.wordText) return;
   const word = elements.wordText.textContent;
-  const pos = elements.wordPos.textContent;
-  const definition = elements.wordDefinition.textContent;
-  const origin = elements.wordOriginText.textContent;
-  const source = elements.wordSource.textContent;
+  const pos = elements.wordPos ? elements.wordPos.textContent : '';
+  const definition = elements.wordDefinition ? elements.wordDefinition.textContent : '';
+  const origin = elements.wordOriginText ? elements.wordOriginText.textContent : '';
+  const source = elements.wordSource ? elements.wordSource.textContent : '';
 
   if (!word || word === '-') return;
 
@@ -346,10 +355,12 @@ function copyWordDetails() {
   const textToCopy = `Word of the Day: ${word} (${pos})\nDefinition: ${definition}${originStr}\n\nSource: ${source}`;
 
   navigator.clipboard.writeText(textToCopy).then(() => {
-    const tooltip = elements.copyBtn.querySelector('.tooltip');
-    if (tooltip) {
-      tooltip.classList.add('show');
-      setTimeout(() => tooltip.classList.remove('show'), 2000);
+    if (elements.copyBtn) {
+      const tooltip = elements.copyBtn.querySelector('.tooltip');
+      if (tooltip) {
+        tooltip.classList.add('show');
+        setTimeout(() => tooltip.classList.remove('show'), 2000);
+      }
     }
   }).catch(err => {
     console.error('Clipboard copy failed:', err);
@@ -420,7 +431,19 @@ function drawEmbeddingSpace() {
   const height = size;
   const padding = 25;
 
-  const activeWord = elements.wordText.textContent ? elements.wordText.textContent.toLowerCase().trim() : '';
+  let activeWord = (elements.wordText && elements.wordText.textContent) ? elements.wordText.textContent.toLowerCase().trim() : '';
+  if (!activeWord && activeDate) {
+    const matchingPoint = embeddingPoints.find(p => p.date === activeDate);
+    if (matchingPoint) {
+      activeWord = matchingPoint.word.toLowerCase().trim();
+    }
+  }
+  if (!activeWord && embeddingPoints.length > 0) {
+    const sorted = [...embeddingPoints].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    if (sorted.length > 0) {
+      activeWord = sorted[0].word.toLowerCase().trim();
+    }
+  }
 
   // Helper function to draw text wrapped in a pill/badge capsule for high legibility
   function drawBadgeLabel(text, x, y, align, baseline, isHighlighted) {
@@ -596,7 +619,7 @@ function drawEmbeddingSpace() {
     });
   }
 
-  // 4. Always draw active word label badge and arrow
+  // 4. Always draw active word label badge and thin white line
   if (activePoint) {
     const px = activePoint.cx;
     const py = activePoint.cy;
@@ -608,15 +631,15 @@ function drawEmbeddingSpace() {
 
     const badgeRect = drawBadgeLabel(activePoint.word.toUpperCase(), labelX, labelY, labelAlign, labelBaseline, true);
 
-    // Draw clean arrow pointing to active point
+    // Draw thin white line pointing to active point
     function drawArrow(fromX, fromY, toX, toY, color) {
-      const headlen = 7;
+      const headlen = 6;
       const angle = Math.atan2(toY - fromY, toX - fromX);
       ctx.beginPath();
       ctx.moveTo(fromX, fromY);
       ctx.lineTo(toX, toY);
       ctx.strokeStyle = color;
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 1.2;
       ctx.stroke();
 
       ctx.beginPath();
@@ -627,23 +650,12 @@ function drawEmbeddingSpace() {
       ctx.fill();
     }
 
-    let arrowStartX, arrowEndX, arrowStartY, arrowEndY;
+    const arrowStartX = Math.max(badgeRect.x, Math.min(badgeRect.x + badgeRect.w, px));
+    const arrowStartY = Math.max(badgeRect.y, Math.min(badgeRect.y + badgeRect.h, py));
 
-    if (px < size / 2) {
-      arrowStartX = badgeRect.x - 5;
-      arrowEndX = px + 13;
-    } else {
-      arrowStartX = badgeRect.x + badgeRect.w + 5;
-      arrowEndX = px - 13;
-    }
-
-    if (py < size / 2) {
-      arrowStartY = badgeRect.y - 5;
-      arrowEndY = py + 10;
-    } else {
-      arrowStartY = badgeRect.y + badgeRect.h + 5;
-      arrowEndY = py - 10;
-    }
+    const angle = Math.atan2(py - arrowStartY, px - arrowStartX);
+    const arrowEndX = px - 9 * Math.cos(angle);
+    const arrowEndY = py - 9 * Math.sin(angle);
 
     drawArrow(arrowStartX, arrowStartY, arrowEndX, arrowEndY, '#ffffff');
   }
@@ -748,8 +760,15 @@ async function initEmbeddingVisual() {
   });
 
   canvas.addEventListener('click', () => {
-    if (hoveredPoint && hoveredPoint.date) {
-      loadWord(hoveredPoint.date);
+    if (hoveredPoint) {
+      if (hoveredPoint.date) {
+        activeDate = hoveredPoint.date;
+      }
+      if (elements.wordCard) {
+        loadWord(hoveredPoint.date);
+      } else {
+        drawEmbeddingSpace();
+      }
     }
   });
 
@@ -894,10 +913,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   calViewYear = parseInt(parts[0], 10);
   calViewMonth = parseInt(parts[1], 10) - 1;
 
-  // Render calendar and load the word
-  renderCalendar();
-  await loadWord(targetDate);
-  loadHistory();
+  // Render calendar and load the word if components are present
+  if (elements.calendarDays && elements.calMonthLabel) {
+    renderCalendar();
+  }
+  if (elements.wordCard) {
+    await loadWord(targetDate);
+  }
+  if (elements.historyList) {
+    loadHistory();
+  }
 
   // Bind action buttons
   if (elements.speakBtn) elements.speakBtn.addEventListener('click', speakWord);
@@ -920,25 +945,29 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // Calendar navigation
-  elements.calPrev.addEventListener('click', () => {
-    if (calViewMonth === 0) {
-      calViewMonth = 11;
-      calViewYear--;
-    } else {
-      calViewMonth--;
-    }
-    renderCalendar();
-  });
+  if (elements.calPrev) {
+    elements.calPrev.addEventListener('click', () => {
+      if (calViewMonth === 0) {
+        calViewMonth = 11;
+        calViewYear--;
+      } else {
+        calViewMonth--;
+      }
+      renderCalendar();
+    });
+  }
 
-  elements.calNext.addEventListener('click', () => {
-    if (calViewMonth === 11) {
-      calViewMonth = 0;
-      calViewYear++;
-    } else {
-      calViewMonth++;
-    }
-    renderCalendar();
-  });
+  if (elements.calNext) {
+    elements.calNext.addEventListener('click', () => {
+      if (calViewMonth === 11) {
+        calViewMonth = 0;
+        calViewYear++;
+      } else {
+        calViewMonth++;
+      }
+      renderCalendar();
+    });
+  }
 
   // Email Daily Digest Subscription Form Handler
   const subscribeForm = document.getElementById('subscribeForm');

@@ -208,6 +208,80 @@ def run_manual_set(
         logger.info(
             f"Successfully saved '{word.upper()}' as Word of the Day for {date}."
         )
+        compute_and_save_related_words(word=word, storage=storage)
+
+
+def compute_and_save_related_words(
+    word: str,
+    storage: "Storage",
+    scorer: Any | None = None,
+    seed_csv_path: str | None = None,
+    cache_npz_path: str | None = None,
+) -> None:
+    """
+    Computes top 3 related words using EmbeddingScorer and saves them to storage.
+    """
+    from .scorers import EmbeddingScorer
+
+    if not isinstance(scorer, EmbeddingScorer):
+        scorer = get_word_scorer(
+            use_embeddings=True,
+            seed_csv_path=seed_csv_path,
+            cache_npz_path=cache_npz_path,
+            embedding_model="all-MiniLM-L6-v2",
+            embedding_k=5,
+        )
+
+    if isinstance(scorer, EmbeddingScorer):
+        try:
+            related_list = scorer.get_similar_words(word, k=3)
+            if related_list:
+                storage.save_related_words(word, related_list)
+                logger.info(
+                    f"Saved {len(related_list)} related words for '{word}'."
+                )
+        except Exception as exc:
+            logger.warning(f"Could not save related words for '{word}': {exc}")
+
+
+def run_backfill_related(
+    storage: "Storage",
+    seed_csv_path: str | None = None,
+    cache_npz_path: str | None = None,
+) -> None:
+    """Backfills top 3 related words for all historical Word of the Day entries."""
+    from .scorers import EmbeddingScorer
+
+    history = storage.get_history()
+    if not history:
+        logger.info("No historical words found in database to backfill.")
+        return
+
+    scorer = get_word_scorer(
+        use_embeddings=True,
+        seed_csv_path=seed_csv_path,
+        cache_npz_path=cache_npz_path,
+        embedding_model="all-MiniLM-L6-v2",
+        embedding_k=5,
+    )
+
+    if not isinstance(scorer, EmbeddingScorer):
+        logger.error("Cannot backfill related words: EmbeddingScorer unavailable.")
+        return
+
+    logger.info(f"Backfilling related words for {len(history)} historical entries...")
+    count = 0
+    for record in history:
+        w = record["word"]
+        try:
+            related_list = scorer.get_similar_words(w, k=3)
+            if related_list:
+                storage.save_related_words(w, related_list)
+                count += 1
+        except Exception as exc:
+            logger.warning(f"Failed to compute related words for '{w}': {exc}")
+
+    logger.info(f"Successfully backfilled related words for {count} words.")
 
 
 def run_api_server(db_path: str | None) -> None:
@@ -566,6 +640,13 @@ def run_pipeline(
                 origin=chosen.origin,
                 cluster_id=today_cluster_id,
             )
+            compute_and_save_related_words(
+                word=chosen.word,
+                storage=storage,
+                scorer=pipeline.scorer,
+                seed_csv_path=seed_csv_path,
+                cache_npz_path=cache_npz_path,
+            )
             print(f"\n🎉 Selected Word of the Day for {date}: {chosen.word.upper()}")
             print(f"Definition: {chosen.definition}")
             print(f"Source: {src}")
@@ -617,6 +698,13 @@ def run_pipeline(
                         },
                         origin=chosen.origin,
                         cluster_id=today_cluster_id,
+                    )
+                    compute_and_save_related_words(
+                        word=chosen.word,
+                        storage=storage,
+                        scorer=pipeline.scorer,
+                        seed_csv_path=seed_csv_path,
+                        cache_npz_path=cache_npz_path,
                     )
                     print(
                         f"\n🎉 Saved Word of the Day for {date}: {chosen.word.upper()}"
@@ -720,6 +808,14 @@ def run(
         except DailyEmailLimitExceededError as e:
             logger.error(f"Daily email limit exceeded: {e}")
             sys.exit(1)
+        return
+
+    if mode == "backfill-related":
+        run_backfill_related(
+            storage=storage,
+            seed_csv_path=seed_csv_path,
+            cache_npz_path=cache_npz_path,
+        )
         return
 
     if mode == "set":

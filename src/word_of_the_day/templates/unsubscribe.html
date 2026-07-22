@@ -1,0 +1,22 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ message_title }} - Word of the Day{% endblock %}
+
+{% block content %}
+<div class="dashboard-grid single-card-layout" style="grid-template-columns: 1fr; width: 100%; max-width: 600px; margin: 2rem auto;">
+  <section class="glass-card active-word-container" style="text-align: center; padding: 3rem 2rem;">
+    <div class="card-meta-header" style="justify-content: center; margin-bottom: 1.5rem;">
+      <span class="date-badge">Subscription Status</span>
+    </div>
+
+    <h2 class="word-title" style="font-size: 2.2rem; margin-bottom: 1rem; text-transform: none;">{{ message_title }}</h2>
+    <p class="definition-box" style="font-size: 1rem; line-height: 1.6; margin-bottom: 2rem;">
+      {{ message_detail }}
+    </p>
+
+    <div>
+      <a href="/" class="submit-btn" style="display: inline-block; text-decoration: none; padding: 0.8rem 2rem;">Return to Homepage</a>
+    </div>
+  </section>
+</div>
+{% endblock %}

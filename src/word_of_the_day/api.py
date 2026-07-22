@@ -15,6 +15,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -28,6 +29,8 @@ from .storage import Storage, WordOfTheDayRecord
 from .utils import map_source_name
 
 logger = get_logger(__name__)
+
+templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -236,6 +239,7 @@ def cast_vote(
 
 @app.get("/api/unsubscribe", response_class=HTMLResponse)
 def unsubscribe(
+    request: Request,
     token: str = Query(..., description="The unique unsubscribe token"),
     storage: Storage = Depends(get_storage),
 ) -> HTMLResponse:
@@ -248,89 +252,15 @@ def unsubscribe(
         message_title = "Invalid Token"
         message_detail = "This unsubscribe link is invalid or has already been used."
 
-    html_content = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{message_title} - Word of the Day</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
-  <style>
-    :root {{
-      --bg-dark: #08080a;
-      --bg-card: rgba(18, 18, 22, 0.65);
-      --border-color: rgba(209, 178, 128, 0.22);
-      --text-primary: #f4f4f5;
-      --text-secondary: #d4d4d8;
-      --text-muted: #71717a;
-      --accent: #d1b280;
-      --accent-rgb: 209, 178, 128;
-    }}
-    body {{
-      font-family: 'Inter', sans-serif;
-      background-color: var(--bg-dark);
-      color: var(--text-primary);
-      margin: 0;
-      padding: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-    }}
-    .container {{
-      max-width: 480px;
-      width: 90%;
-      background: var(--bg-card);
-      border: 1px solid var(--border-color);
-      border-radius: 24px;
-      padding: 3rem;
-      text-align: center;
-      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.4);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-    }}
-    h1 {{
-      font-family: 'Outfit', sans-serif;
-      color: var(--accent);
-      font-size: 1.8rem;
-      margin-top: 0;
-      margin-bottom: 1rem;
-    }}
-    p {{
-      color: var(--text-secondary);
-      font-size: 0.95rem;
-      line-height: 1.6;
-      margin-bottom: 2rem;
-    }}
-    .back-btn {{
-      display: inline-block;
-      background: var(--text-primary);
-      color: var(--bg-dark);
-      text-decoration: none;
-      font-family: 'Outfit', sans-serif;
-      font-weight: 600;
-      font-size: 0.85rem;
-      padding: 0.75rem 1.5rem;
-      border-radius: 9999px;
-      transition: all 0.3s ease;
-    }}
-    .back-btn:hover {{
-      background: var(--accent);
-      box-shadow: 0 0 15px 1px rgba(var(--accent-rgb), 0.35);
-      transform: translateY(-1px);
-    }}
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>{message_title}</h1>
-    <p>{message_detail}</p>
-    <a href="/" class="back-btn">Go to Portal</a>
-  </div>
-</body>
-</html>
-"""
-    return HTMLResponse(content=html_content)
+    return templates.TemplateResponse(
+        request=request,
+        name="unsubscribe.html",
+        context={
+            "success": success,
+            "message_title": message_title,
+            "message_detail": message_detail,
+        },
+    )
 
 
 @app.get("/api/word", response_model=None)
@@ -651,47 +581,151 @@ def get_embeddings_grid(
 
 
 @app.get("/", response_class=HTMLResponse)
-def read_root() -> HTMLResponse:
+def read_root(request: Request) -> HTMLResponse:
     """
     Serves the beautiful glassmorphic Word of the Day portal dashboard.
     """
-    html_path = Path(__file__).parent / "static" / "index.html"
-    if not html_path.exists():
-        logger.error(f"Static HTML file not found at: {html_path}")
-        return HTMLResponse(
-            content="<h1>Word of the Day Portal UI not found</h1>", status_code=404
-        )
-
-    try:
-        content = html_path.read_text(encoding="utf-8")
-        return HTMLResponse(content=content)
-    except Exception as e:
-        logger.error(f"Failed to read static HTML: {e}")
-        return HTMLResponse(
-            content="<h1>Error loading Word of the Day Portal UI</h1>", status_code=500
-        )
+    return templates.TemplateResponse(request=request, name="index.html")
 
 
 @app.get("/subscribe", response_class=HTMLResponse)
-def read_subscribe() -> HTMLResponse:
+def read_subscribe(request: Request) -> HTMLResponse:
     """
     Serves the beautiful glassmorphic Word of the Day subscription page.
     """
-    html_path = Path(__file__).parent / "static" / "subscribe.html"
-    if not html_path.exists():
-        logger.error(f"Static subscribe HTML file not found at: {html_path}")
-        return HTMLResponse(
-            content="<h1>Subscription UI not found</h1>", status_code=404
-        )
+    return templates.TemplateResponse(request=request, name="subscribe.html")
 
-    try:
-        content = html_path.read_text(encoding="utf-8")
-        return HTMLResponse(content=content)
-    except Exception as e:
-        logger.error(f"Failed to read subscribe static HTML: {e}")
-        return HTMLResponse(
-            content="<h1>Error loading Subscription UI</h1>", status_code=500
-        )
+
+@app.get("/map", response_class=HTMLResponse)
+def read_map(request: Request) -> HTMLResponse:
+    """
+    Serves the interactive 2D vocabulary map / embedding space page.
+    """
+    return templates.TemplateResponse(request=request, name="map.html")
+
+
+@app.get("/word/{word}", response_class=HTMLResponse)
+def get_word_page(
+    request: Request,
+    word: str,
+    storage: Storage = Depends(get_storage),
+) -> HTMLResponse:
+    """
+    Serves the dynamic single Word of the Day detail page.
+    Injects word metadata into title, description meta tag, and UI card.
+    """
+    record = storage.get_word_by_name(word)
+    is_wotd = True
+
+    if not record:
+        is_wotd = False
+        with DictionaryClient(storage=storage) as dict_client:
+            is_valid, def_str, origin = dict_client.get_word_definition(word)
+
+        if not is_valid:
+            return templates.TemplateResponse(
+                request=request,
+                name="word.html",
+                status_code=404,
+                context={
+                    "record": {"word": "Word Not Found", "origin": None},
+                    "friendly_date": "N/A",
+                    "part_of_speech": "error",
+                    "definition": f"The word '{word}' was not found in the dictionary.",
+                    "source_name": "System",
+                    "score_display": "-",
+                    "net_score": 0,
+                    "is_wotd": False,
+                    "related_words": [],
+                    "page_data": {
+                        "word": word,
+                        "date": "",
+                        "upvotes": 0,
+                        "downvotes": 0,
+                        "userVote": None,
+                        "definition": "",
+                        "origin": "",
+                        "source": "",
+                    },
+                },
+            )
+
+        record = {
+            "word": word,
+            "date": "",
+            "definition": def_str,
+            "source": "Dictionary",
+            "score": None,
+            "extra_info": {},
+            "origin": origin,
+        }
+
+    def_str = record["definition"] or "No definition found."
+    pos_str = "unknown"
+    definition_text = def_str
+    pos_match = re.match(r"^\(([^)]+)\)\s*(.*)", def_str)
+    if pos_match:
+        pos_str = pos_match.group(1)
+        definition_text = pos_match.group(2)
+
+    score = record["score"]
+    extra_info = record.get("extra_info") or {}
+    score_val = "-"
+    if score is not None:
+        if score > 1.0:
+            score_val = f"Zipf: {score:.2f}"
+        else:
+            score_val = f"{score:.4f}"
+    elif "zipf_score" in extra_info:
+        score_val = f"Zipf: {extra_info['zipf_score']:.2f}"
+
+    if is_wotd and record.get("date"):
+        try:
+            friendly_date = datetime.strptime(record["date"], "%Y-%m-%d").strftime("%A, %B %d, %Y")
+        except ValueError:
+            friendly_date = record["date"]
+    else:
+        friendly_date = "Vocabulary Entry"
+
+    source_name = map_source_name(record["source"])
+    if is_wotd and record.get("date"):
+        counts = storage.get_vote_counts(record["date"])
+        upvotes = counts["upvotes"]
+        downvotes = counts["downvotes"]
+    else:
+        upvotes = 0
+        downvotes = 0
+
+    page_data = {
+        "word": record["word"],
+        "date": record.get("date", ""),
+        "upvotes": upvotes,
+        "downvotes": downvotes,
+        "userVote": None,
+        "definition": definition_text,
+        "origin": record["origin"] or "",
+        "source": source_name,
+    }
+
+    related_words = storage.get_related_words(record["word"]) if is_wotd else []
+
+    return templates.TemplateResponse(
+        request=request,
+        name="word.html",
+        context={
+            "record": record,
+            "friendly_date": friendly_date,
+            "part_of_speech": pos_str,
+            "definition": definition_text,
+            "source_name": source_name,
+            "score_display": score_val,
+            "net_score": upvotes - downvotes,
+            "page_data": page_data,
+            "is_wotd": is_wotd,
+            "related_words": related_words,
+        },
+    )
+
 
 
 @app.get("/healthz", status_code=200)
@@ -765,25 +799,11 @@ def admin_login(payload: LoginRequest) -> dict[str, str]:
 
 
 @app.get("/admin", response_class=HTMLResponse)
-def read_admin() -> HTMLResponse:
+def read_admin(request: Request) -> HTMLResponse:
     """
     Serves the beautiful glassmorphic Word of the Day admin dashboard.
     """
-    html_path = Path(__file__).parent / "static" / "admin.html"
-    if not html_path.exists():
-        logger.error(f"Static admin HTML file not found at: {html_path}")
-        return HTMLResponse(
-            content="<h1>Word of the Day Admin UI not found</h1>", status_code=404
-        )
-
-    try:
-        content = html_path.read_text(encoding="utf-8")
-        return HTMLResponse(content=content)
-    except Exception as e:
-        logger.error(f"Failed to read admin static HTML: {e}")
-        return HTMLResponse(
-            content="<h1>Error loading Word of the Day Admin UI</h1>", status_code=500
-        )
+    return templates.TemplateResponse(request=request, name="admin.html")
 
 
 @app.post("/api/admin/word")
@@ -985,9 +1005,21 @@ def admin_send_email(
 
     try:
         sent_count = send_daily_emails(date_str, storage, force=payload.force or False)
+        if sent_count == 0 and not (payload.force or False):
+            active_subs = storage.get_active_subscribers()
+            if active_subs:
+                message = (
+                    "No emails sent. All active subscribers have already received today's "
+                    "Word of the Day email. Check 'Force Resend' to send again."
+                )
+            else:
+                message = "No active email subscriptions found. Skipping dispatch."
+        else:
+            message = f"Successfully sent daily email to {sent_count} subscribers."
+
         return {
             "status": "success",
-            "message": f"Successfully sent daily email to {sent_count} subscribers.",
+            "message": message,
             "sent_count": sent_count,
         }
     except DailyEmailLimitExceededError as e:

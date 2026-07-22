@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Word of the Day: {{ word | upper }}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #08080a; color: #f4f4f5; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; -webkit-font-smoothing: antialiased; line-height: 1.6;">
+  <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #08080a; padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <!-- Main Email Card -->
+        <table class="card" width="100%" max-width="600" border="0" cellspacing="0" cellpadding="0" style="max-width: 600px; background-color: #121216; border: 1px solid rgba(209, 178, 128, 0.22); border-radius: 24px; padding: 44px; text-align: left; box-shadow: 0 4px 30px rgba(0, 0, 0, 0.4);">
+          <!-- Header -->
+          <tr>
+            <td style="padding-bottom: 20px; border-bottom: 1px solid rgba(209, 178, 128, 0.15);">
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 500; color: #71717a; text-transform: uppercase; letter-spacing: 0.08em;">Word of the Day • {{ friendly_date }}</span>
+            </td>
+          </tr>
+          <!-- Word Title and POS -->
+          <tr>
+            <td style="padding: 28px 0;">
+              <table border="0" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td style="font-family: 'Playfair Display', Georgia, Times, 'Times New Roman', serif; font-size: 48px; font-weight: 700; color: #f4f4f5; line-height: 1.1; text-transform: uppercase;">
+                    {{ word | upper }}
+                  </td>
+                  <td style="padding-left: 15px; vertical-align: middle;">
+                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 500; color: #d1b280; background-color: rgba(209, 178, 128, 0.08); border: 1px solid rgba(209, 178, 128, 0.25); padding: 2px 10px; border-radius: 9999px; text-transform: lowercase;">{{ part_of_speech }}</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <!-- Definition -->
+          <tr>
+            <td style="font-size: 16px; color: #d4d4d8; line-height: 1.6; padding-bottom: 28px;">
+              {{ definition }}
+            </td>
+          </tr>
+          <!-- Origin Section -->
+          {% if origin and origin.strip().lower() not in ['', 'not available'] %}
+          <tr>
+            <td style="padding-bottom: 28px;">
+              <div style="background-color: rgba(255, 255, 255, 0.02); border: 1px solid rgba(209, 178, 128, 0.15); border-radius: 12px; padding: 16px;">
+                <span style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: #71717a; display: block; margin-bottom: 4px; letter-spacing: 0.05em; font-family: 'JetBrains Mono', monospace;">Etymology & Origin</span>
+                <span style="font-size: 14px; color: #d4d4d8; line-height: 1.5;">{{ origin }}</span>
+              </div>
+            </td>
+          </tr>
+          {% endif %}
+          <!-- Footer Details -->
+          <tr>
+            <td style="padding-top: 20px; border-top: 1px solid rgba(209, 178, 128, 0.15);">
+              <table width="100%" border="0" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td>
+                    <span style="font-size: 11px; color: #71717a; text-transform: uppercase; display: block; font-family: 'JetBrains Mono', monospace;">Discovery Source</span>
+                    <span style="font-size: 14px; color: #d4d4d8; font-weight: 500;">{{ source }}</span>
+                  </td>
+                  <td align="right">
+                    <span style="font-size: 11px; color: #71717a; text-transform: uppercase; display: block; font-family: 'JetBrains Mono', monospace;">Word Score</span>
+                    <span style="font-size: 14px; color: #d1b280; font-weight: 500;">{{ score_val }}</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+
+        <!-- Unsubscribe Footer -->
+        <table width="100%" max-width="600" border="0" cellspacing="0" cellpadding="0" style="max-width: 600px; text-align: center; margin-top: 24px;">
+          <tr>
+            <td style="font-size: 12px; color: #71717a; line-height: 1.5;">
+              You are receiving this because you subscribed to the word. daily digest.<br>
+              <a href="{{ unsubscribe_url }}" style="color: #d1b280; text-decoration: underline; margin-top: 8px; display: inline-block;">Unsubscribe from this list</a>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

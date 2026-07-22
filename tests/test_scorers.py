@@ -434,4 +434,42 @@ def test_composite_scorer_batch() -> None:
     mock_scorer2.score_batch.assert_called_once_with(["word1", "word2"])
 
 
+def test_embedding_scorer_get_similar_words(tmp_path: Path) -> None:
+    """Verifies get_similar_words filters self-match and returns top k sorted."""
+    import numpy as np
+
+    csv_path = tmp_path / "seeds.csv"
+    cache_path = tmp_path / "seeds.npz"
+
+    words = ["sagacious", "loquacious", "taciturn", "ephemeral"]
+    embeddings = np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [0.9, 0.1, 0.0],
+            [0.5, 0.5, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float32,
+    )
+    np.savez_compressed(cache_path, words=words, embeddings=embeddings)
+
+    with patch("sentence_transformers.SentenceTransformer") as mock_st_class:
+        mock_model = MagicMock()
+        mock_st_class.return_value = mock_model
+        mock_model.encode.return_value = np.array([[1.0, 0.0, 0.0]], dtype=np.float32)
+
+        scorer = EmbeddingScorer(
+            seed_csv_path=csv_path,
+            cache_npz_path=cache_path,
+            model_name="dummy-model",
+        )
+
+        similar = scorer.get_similar_words("sagacious", k=2)
+        assert len(similar) == 2
+        assert similar[0][0] == "loquacious"
+        assert similar[1][0] == "taciturn"
+        assert similar[0][1] > similar[1][1]
+
+
+
 

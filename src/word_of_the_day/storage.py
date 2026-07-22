@@ -202,6 +202,22 @@ class Storage:
                 "CREATE INDEX IF NOT EXISTS idx_seen_words_word ON seen_words(word)"
             )
 
+            # Create related_words table to store top k semantically related words
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS related_words (
+                    target_word TEXT NOT NULL,
+                    related_word TEXT NOT NULL,
+                    similarity_rank INTEGER NOT NULL,
+                    similarity_score REAL,
+                    PRIMARY KEY (target_word, similarity_rank)
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_related_words_target ON related_words(target_word)"
+            )
+
             # Migration: Migrate existing entries from dictionary_cache to seen_words if seen_words is empty
             cursor = conn.cursor()
             cursor.execute("SELECT COUNT(*) FROM seen_words")
@@ -520,6 +536,56 @@ class Storage:
             conn.execute("DELETE FROM wotd_history WHERE date = ?", (date,))
             conn.commit()
 
+    def save_related_words(
+        self, target_word: str, related_list: list[tuple[str, float]]
+    ) -> None:
+        """
+        Executes INSERT OR REPLACE to store top related words and their similarity scores.
+        """
+        cleaned_target = target_word.strip().lower()
+        with self._connect() as conn:
+            for rank, item in enumerate(related_list, start=1):
+                related_w, score = item
+                conn.execute(
+                    """
+                    INSERT INTO related_words
+                    (target_word, related_word, similarity_rank, similarity_score)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(target_word, similarity_rank) DO UPDATE SET
+                        related_word = excluded.related_word,
+                        similarity_score = excluded.similarity_score
+                    """,
+                    (cleaned_target, related_w.strip().lower(), rank, float(score)),
+                )
+            conn.commit()
+
+    def get_related_words(self, target_word: str) -> list[dict[str, Any]]:
+        """
+        Retrieves the list of related words for rendering in the UI.
+        Returns a list of dicts: [{'word': str, 'rank': int, 'score': float}, ...]
+        """
+        cleaned_target = target_word.strip().lower()
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT related_word, similarity_rank, similarity_score
+                FROM related_words
+                WHERE LOWER(target_word) = ?
+                ORDER BY similarity_rank ASC
+                """,
+                (cleaned_target,),
+            )
+            rows = cursor.fetchall()
+            return [
+                {
+                    "word": row[0],
+                    "rank": row[1],
+                    "score": row[2] if row[2] is not None else 0.0,
+                }
+                for row in rows
+            ]
+
     def get_word_of_the_day(self, date: str) -> WordOfTheDayRecord | None:
         """
         Retrieves the Word of the Day record for a given date.
@@ -553,6 +619,42 @@ class Storage:
                     "cluster_id": row["cluster_id"],
                 }
             return None
+
+    def get_word_by_name(self, word: str) -> WordOfTheDayRecord | None:
+        """
+        Retrieves the most recent historical Word of the Day record matching the given word (case-insensitive).
+        """
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT date, word, definition, source, score, extra_info, origin, cluster_id
+                FROM wotd_history WHERE LOWER(word) = LOWER(?)
+                ORDER BY date DESC LIMIT 1
+                """,
+                (word.strip().lower(),),
+            )
+            row = cursor.fetchone()
+            if row:
+                extra_info: dict[str, Any] | None = None
+                if row["extra_info"]:
+                    try:
+                        extra_info = json.loads(row["extra_info"])
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                return {
+                    "date": row["date"],
+                    "word": row["word"],
+                    "definition": row["definition"],
+                    "source": row["source"],
+                    "score": row["score"],
+                    "extra_info": extra_info,
+                    "origin": row["origin"],
+                    "cluster_id": row["cluster_id"],
+                }
+            return None
+
 
     def get_history(self, limit: int | None = None) -> list[WordOfTheDayRecord]:
         """
@@ -751,7 +853,7 @@ class Storage:
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT OR IGNORE INTO email_dispatch_log (date, email, sent_at)
+                INSERT OR REPLACE INTO email_dispatch_log (date, email, sent_at)
                 VALUES (?, ?, ?)
                 """,
                 (date_str, cleaned_email, now_str),

@@ -15,11 +15,18 @@ try:
 except ImportError:
     from backports import zoneinfo  # type: ignore
 
+from jinja2 import Environment, FileSystemLoader
+
 from .config import settings
 from .logger import get_logger
 from .storage import Storage, WordOfTheDayRecord
 
 logger = get_logger(__name__)
+
+jinja_env = Environment(
+    loader=FileSystemLoader(Path(__file__).parent / "templates"),
+    autoescape=True,
+)
 
 
 class DailyEmailLimitExceededError(ValueError):
@@ -31,27 +38,28 @@ class DailyEmailLimitExceededError(ValueError):
 def parse_definition_and_pos(definition_str: str | None) -> tuple[str, str]:
     """
     Parses definition and part of speech from the definition string.
-    Expected format: "(partOfSpeech) Definition text"
+    Expected format: "(partOfSpeech) Definition text" or "(partOfSpeech) : Definition text"
     """
     if not definition_str:
         return "No definition found.", "unknown"
-    pos_match = re.match(r"^\(([^)]+)\)\s*(.*)", definition_str)
+    pos_match = re.match(r"^\(([^)]+)\)\s*:?\s*(.*)", definition_str)
     if pos_match:
-        return pos_match.group(2), pos_match.group(1)
-    return definition_str, "unknown"
+        return pos_match.group(2).strip(), pos_match.group(1)
+    return definition_str.strip(), "unknown"
 
 
 def render_word_email(record: WordOfTheDayRecord, unsubscribe_url: str) -> str:
     """
-    Renders the Word of the Day email template with completely inline CSS styles.
+    Renders an HTML email for the given word record using Jinja2 template.
     """
-    word = record["word"].upper()
-    raw_definition = record["definition"]
-    definition, part_of_speech = parse_definition_and_pos(raw_definition)
-    source = record["source"]
-    origin = record.get("origin") or ""
+    word = record["word"]
+    def_str = record["definition"] or "No definition available."
+    origin = record["origin"] or ""
+    source = record["source"] or "Word of the Day"
 
-    # Parse and format date
+    definition, part_of_speech = parse_definition_and_pos(def_str)
+
+    # Format friendly date
     try:
         dt = datetime.strptime(record["date"], "%Y-%m-%d")
         friendly_date = dt.strftime("%A, %B %d, %Y")
@@ -70,97 +78,17 @@ def render_word_email(record: WordOfTheDayRecord, unsubscribe_url: str) -> str:
     else:
         score_val = "-"
 
-    # Conditional origin box
-    origin_section = ""
-    if origin.strip() and origin.strip().lower() != "not available":
-        origin_section = f"""
-          <tr>
-            <td style="padding-bottom: 28px;">
-              <div style="background-color: rgba(255, 255, 255, 0.02); border: 1px solid rgba(209, 178, 128, 0.15); border-radius: 12px; padding: 16px;">
-                <span style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: #71717a; display: block; margin-bottom: 4px; letter-spacing: 0.05em; font-family: 'JetBrains Mono', monospace;">Etymology & Origin</span>
-                <span style="font-size: 14px; color: #d4d4d8; line-height: 1.5;">{origin}</span>
-              </div>
-            </td>
-          </tr>
-        """
-
-    # Obsidian Gold inline style template
-    html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Word of the Day: {word}</title>
-</head>
-<body style="margin: 0; padding: 0; background-color: #08080a; color: #f4f4f5; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; -webkit-font-smoothing: antialiased; line-height: 1.6;">
-  <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #08080a; padding: 40px 20px;">
-    <tr>
-      <td align="center">
-        <!-- Main Email Card -->
-        <table class="card" width="100%" max-width="600" border="0" cellspacing="0" cellpadding="0" style="max-width: 600px; background-color: #121216; border: 1px solid rgba(209, 178, 128, 0.22); border-radius: 24px; padding: 44px; text-align: left; box-shadow: 0 4px 30px rgba(0, 0, 0, 0.4);">
-          <!-- Header -->
-          <tr>
-            <td style="padding-bottom: 20px; border-bottom: 1px solid rgba(209, 178, 128, 0.15);">
-              <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 500; color: #71717a; text-transform: uppercase; letter-spacing: 0.08em;">Word of the Day • {friendly_date}</span>
-            </td>
-          </tr>
-          <!-- Word Title and POS -->
-          <tr>
-            <td style="padding: 28px 0;">
-              <table border="0" cellspacing="0" cellpadding="0">
-                <tr>
-                  <td style="font-family: 'Playfair Display', Georgia, Times, 'Times New Roman', serif; font-size: 48px; font-weight: 700; color: #f4f4f5; line-height: 1.1; text-transform: lowercase;">
-                    {word}
-                  </td>
-                  <td style="padding-left: 15px; vertical-align: middle;">
-                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 500; color: #d1b280; background-color: rgba(209, 178, 128, 0.08); border: 1px solid rgba(209, 178, 128, 0.25); padding: 2px 10px; border-radius: 9999px; text-transform: lowercase;">{part_of_speech}</span>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-          <!-- Definition -->
-          <tr>
-            <td style="font-size: 16px; color: #d4d4d8; line-height: 1.6; padding-bottom: 28px;">
-              {definition}
-            </td>
-          </tr>
-          <!-- Origin Section -->
-          {origin_section}
-          <!-- Footer Details -->
-          <tr>
-            <td style="padding-top: 20px; border-top: 1px solid rgba(209, 178, 128, 0.15);">
-              <table width="100%" border="0" cellspacing="0" cellpadding="0">
-                <tr>
-                  <td>
-                    <span style="font-size: 11px; color: #71717a; text-transform: uppercase; display: block; font-family: 'JetBrains Mono', monospace;">Discovery Source</span>
-                    <span style="font-size: 14px; color: #d4d4d8; font-weight: 500;">{source}</span>
-                  </td>
-                  <td align="right">
-                    <span style="font-size: 11px; color: #71717a; text-transform: uppercase; display: block; font-family: 'JetBrains Mono', monospace;">Word Score</span>
-                    <span style="font-size: 14px; color: #d1b280; font-weight: 500;">{score_val}</span>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-        </table>
-
-        <!-- Unsubscribe Footer -->
-        <table width="100%" max-width="600" border="0" cellspacing="0" cellpadding="0" style="max-width: 600px; text-align: center; margin-top: 24px;">
-          <tr>
-            <td style="font-size: 12px; color: #71717a; line-height: 1.5;">
-              You are receiving this because you subscribed to the word. daily digest.<br>
-              <a href="{unsubscribe_url}" style="color: #d1b280; text-decoration: underline; margin-top: 8px; display: inline-block;">Unsubscribe from this list</a>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>
-"""
-    return html
+    template = jinja_env.get_template("emails/daily_digest.html")
+    return template.render(
+        word=word,
+        part_of_speech=part_of_speech,
+        definition=definition,
+        origin=origin,
+        source=source,
+        score_val=score_val,
+        friendly_date=friendly_date,
+        unsubscribe_url=unsubscribe_url,
+    )
 
 
 def render_word_plain_text(record: WordOfTheDayRecord, unsubscribe_url: str) -> str:
@@ -289,7 +217,7 @@ def send_email_batch(
     Sends the Word of the Day email to a list of recipients.
     Reuses a single SMTP connection for efficiency and logs deliveries transactionally.
     """
-    subject = f"Word of the Day: {record['word'].lower()}"
+    subject = f"Word of the Day: {record['word'].upper()}"
     app_base_url = settings.app_base_url.rstrip("/")
     sent_count = 0
 
@@ -399,10 +327,14 @@ def send_email_batch(
             msg["From"] = f"{settings.smtp_from_name} <{settings.smtp_from_email}>"
             msg["To"] = email
 
-            # Add RFC-compliant list unsubscribe and bulk headers
-            msg["List-Unsubscribe"] = f"<{unsubscribe_url}>"
-            msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
-            msg["Precedence"] = "bulk"
+            # Add List-Unsubscribe headers only when using a public HTTPS URL (avoid breaking delivery with localhost URLs or legacy Precedence headers)
+            if (
+                unsubscribe_url.startswith("https://")
+                and "localhost" not in unsubscribe_url
+                and "127.0.0.1" not in unsubscribe_url
+            ):
+                msg["List-Unsubscribe"] = f"<{unsubscribe_url}>"
+                msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
 
             # Attach plain text version first
             plain_content = render_word_plain_text(record, unsubscribe_url)
@@ -424,6 +356,7 @@ def send_email_batch(
         if isinstance(e, DailyEmailLimitExceededError):
             raise
         logger.error(f"SMTP Connection failure during batch send: {e}", exc_info=True)
+        raise RuntimeError(f"SMTP failure: {e}") from e
     finally:
         if server:
             try:

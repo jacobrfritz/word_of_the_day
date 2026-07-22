@@ -442,6 +442,50 @@ class EmbeddingScorer:
         mean_sims = np.mean(top_k_sims, axis=0)
         return [float(s) for s in mean_sims]
 
+    def get_similar_words(
+        self, target_word: str, k: int = 3
+    ) -> list[tuple[str, float]]:
+        """
+        Computes the dot product of the target_word's vector against all
+        normalized_seeds. Returns the top `k` most similar words, excluding
+        the target word itself.
+        """
+        if not self.seed_words or len(self.normalized_seeds) == 0:
+            return []
+
+        import numpy as np
+
+        model = self._lazy_load_model()
+
+        try:
+            target_vector = cast(
+                "np.ndarray",
+                model.encode([target_word], show_progress_bar=False)[0],
+            )
+        except Exception as e:
+            logger.error(f"Failed to encode target word '{target_word}': {e}")
+            return []
+
+        norm_val = np.linalg.norm(target_vector)
+        if norm_val == 0:
+            return []
+        target_norm = target_vector / norm_val
+
+        similarities = np.dot(self.normalized_seeds, target_norm)
+        sorted_indices = np.argsort(-similarities)
+
+        results: list[tuple[str, float]] = []
+        cleaned_target = target_word.strip().lower()
+        for idx in sorted_indices:
+            seed_word = self.seed_words[idx]
+            if seed_word.strip().lower() != cleaned_target:
+                results.append((seed_word, float(similarities[idx])))
+                if len(results) == k:
+                    break
+
+        return results
+
+
     def set_target_centroid(self, centroid: "np.ndarray | None") -> None:
         """
         Sets the active target centroid for scoring candidates.

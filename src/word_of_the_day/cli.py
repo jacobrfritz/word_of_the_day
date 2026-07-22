@@ -195,12 +195,12 @@ def parse_args(args: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--mode",
         type=str,
-        choices=["list", "auto", "interactive", "set", "api", "send-emails"],
+        choices=["list", "auto", "interactive", "set", "api", "send-emails", "backfill-related"],
         default="list",
         help=(
             "Operation mode: 'list' candidates, 'auto' select, "
             "'interactive' select, 'set' manually, start 'api' server, "
-            "or 'send-emails' daily digest."
+            "'send-emails' daily digest, or 'backfill-related' top words."
         ),
     )
     parser.add_argument(

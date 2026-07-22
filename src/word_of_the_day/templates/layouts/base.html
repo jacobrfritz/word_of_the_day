@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Word of the Day Portal{% endblock %}</title>
+  {% block meta_description %}
+    <meta name="description" content="Daily curated English vocabulary and etymology portal.">
+  {% endblock %}
+
+  <!-- Premium Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;0,800;1,500;1,600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/static/style.css?v=16">
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  <!-- Inline script to prevent theme flashing (FOUC) -->
+  <script>
+    (function() {
+      const savedTheme = localStorage.getItem('vocabulary-theme') || 'gold';
+      if (savedTheme !== 'gold') {
+        document.body.classList.add('theme-' + savedTheme);
+      }
+    })();
+  </script>
+
+  <!-- Ambient background lighting -->
+  <div class="ambient-glow glow-1"></div>
+  <div class="ambient-glow glow-2"></div>
+
+  <!-- Minimalist Navbar -->
+  {% include "components/navbar.html" %}
+
+  <!-- Centered Main Content Area -->
+  <main class="centered-layout {% block layout_class %}{% endblock %}">
+    {% block content %}{% endblock %}
+  </main>
+
+  {% block footer %}{% endblock %}
+
+  <div class="toast-container" id="toastContainer"></div>
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>

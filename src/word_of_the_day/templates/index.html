@@ -1,0 +1,289 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Word of the Day Portal{% endblock %}
+
+{% block content %}
+<div class="dashboard-grid single-card-layout" style="grid-template-columns: 1fr; width: 100%;">
+  <!-- Word Card Showcase -->
+  <section class="glass-card active-word-container" id="wordCard">
+    <!-- Loading spinner overlay -->
+    <div class="spinner-overlay" id="loadingOverlay">
+      <div class="loading-spinner"></div>
+    </div>
+
+    <!-- Date header metadata -->
+    <div class="card-meta-header">
+      <span class="date-badge" id="wordDate">Loading...</span>
+    </div>
+
+    <!-- Word Showcase Header -->
+    <div class="word-header">
+      <div class="word-title-group">
+        <h2 class="word-title" id="wordText">-</h2>
+        <span class="part-of-speech" id="wordPos">unknown</span>
+      </div>
+
+      <!-- Action & Voting Buttons -->
+      <div class="header-controls">
+        {% include "components/vote_widget.html" %}
+
+        <!-- Action Buttons -->
+        <div class="action-buttons">
+          <button class="action-btn" id="speakBtn" aria-label="Listen to pronunciation" title="Listen">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M11 5L6 9H2v6h4l5 4V5z"></path>
+              <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+            </svg>
+          </button>
+          <button class="action-btn" id="copyBtn" aria-label="Copy word and definition" title="Copy">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            <span class="tooltip">Copied!</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Content Details -->
+    <p class="definition-box" id="wordDefinition">
+      Please wait while we load today's vocabulary word.
+    </p>
+
+    <div class="origin-box" id="wordOriginBox" style="display: none;">
+      <span class="origin-label">Etymology & Origin</span>
+      <span id="wordOriginText">-</span>
+    </div>
+
+    <!-- Bottom stats metadata -->
+    <div class="meta-details">
+      <div class="meta-item">
+        <span class="meta-label">Discovery Source</span>
+        <span class="meta-value" id="wordSource">-</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">Word Score</span>
+        <span class="meta-value" id="wordScore">-</span>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- Minimal Recent Selections History Feed -->
+<section class="history-section">
+  <div class="history-divider">
+    <span>Recent Archive</span>
+  </div>
+  <div class="history-list" id="historyList">
+    <!-- Dynamically rendered history items -->
+  </div>
+</section>
+
+<!-- Custom Calendar Date Picker (collapsible - directly under recent archive) -->
+<section class="lookup-section">
+  <div class="calendar-widget glass-card" id="calendarWidget">
+    <!-- Collapsed trigger row — always visible -->
+    <button class="cal-collapse-trigger" id="calToggle" aria-expanded="false" aria-controls="calendarBody">
+      <div class="cal-trigger-left">
+        <svg class="cal-trigger-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+          <line x1="16" y1="2" x2="16" y2="6"></line>
+          <line x1="8" y1="2" x2="8" y2="6"></line>
+          <line x1="3" y1="10" x2="21" y2="10"></line>
+        </svg>
+        <span class="cal-trigger-label">Browse Archive</span>
+      </div>
+      <div class="cal-trigger-right">
+        <span class="cal-trigger-date" id="calTriggerDate"></span>
+        <svg class="cal-trigger-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </div>
+    </button>
+
+    <!-- Collapsible body -->
+    <div class="cal-body" id="calendarBody">
+      <div class="cal-body-inner">
+        <div class="calendar-header">
+          <button class="cal-nav-btn" id="calPrev" aria-label="Previous month">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          </button>
+          <span class="cal-month-label" id="calMonthLabel"></span>
+          <button class="cal-nav-btn" id="calNext" aria-label="Next month">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+          </button>
+        </div>
+        <div class="calendar-weekdays">
+          <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+        </div>
+        <div class="calendar-days" id="calendarDays"></div>
+      </div>
+    </div>
+  </div>
+  <div class="error-msg" id="errorContainer">No Word of the Day chosen for this date.</div>
+</section>
+
+<!-- Daily Digest Email Subscription -->
+<section class="lookup-section subscription-section">
+  <div class="glass-card subscription-card" id="subscriptionCard">
+    <div class="card-meta-header">
+      <span class="date-badge">Newsletter</span>
+    </div>
+    <div class="word-header">
+      <div class="word-title-group">
+        <h2 class="word-title" style="font-size: 2.2rem; letter-spacing: -0.03em;">Daily Digest</h2>
+      </div>
+    </div>
+    <p class="definition-box" style="font-size: 0.9rem; margin-bottom: 1.25rem; min-height: unset; line-height: 1.45;">
+      Get the Word of the Day sent straight to your inbox at 6:00 AM daily. Clean, elegant, and advertisement-free.
+    </p>
+    {% include "components/subscribe_form.html" %}
+  </div>
+</section>
+
+<!-- Vocabulary Map Link Card (directly above footer) -->
+<section class="lookup-section">
+  <div class="glass-card map-teaser-card" id="mapTeaserCard">
+    <div class="card-meta-header">
+      <span class="date-badge">Interactive Map</span>
+    </div>
+    <div class="word-header" style="margin-bottom: 0.5rem;">
+      <div class="word-title-group">
+        <h2 class="word-title" style="font-size: 2rem; letter-spacing: -0.03em;">Vocabulary Map</h2>
+      </div>
+    </div>
+    <p class="definition-box" style="font-size: 0.95rem; line-height: 1.5; min-height: auto; margin-bottom: 1.25rem;">
+      Explore our interactive 2D semantic embedding space visualizer. Map relationships between daily words, cluster centroids, and etymological origins in real time.
+    </p>
+    <div>
+      <a href="/map" class="submit-btn">
+        <span>Explore Vocabulary Map</span>
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+          <polyline points="12 5 19 12 12 19"></polyline>
+        </svg>
+      </a>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block footer %}
+<footer class="footer">
+  <div class="footer-container">
+    <div class="footer-divider">
+      <span>How word<span>.</span> Works</span>
+    </div>
+
+    <div class="pipeline-section">
+      <div class="pipeline-flow-wrapper">
+        <svg class="pipeline-svg" viewBox="0 0 680 120" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="var(--text-muted)" />
+            </marker>
+          </defs>
+
+          <!-- Connecting Lines -->
+          <line x1="115" y1="60" x2="140" y2="60" stroke="var(--border-color)" stroke-width="2" marker-end="url(#arrow)" class="flow-line" />
+          <line x1="256" y1="60" x2="281" y2="60" stroke="var(--border-color)" stroke-width="2" marker-end="url(#arrow)" class="flow-line" />
+          <line x1="397" y1="60" x2="422" y2="60" stroke="var(--border-color)" stroke-width="2" marker-end="url(#arrow)" class="flow-line" />
+          <line x1="538" y1="60" x2="563" y2="60" stroke="var(--border-color)" stroke-width="2" marker-end="url(#arrow)" class="flow-line" />
+
+          <!-- Node 1: Ingest -->
+          <g class="pipeline-node" transform="translate(5, 25)">
+            <title>Ingestion: Fetches raw text corpora from Wikipedia, Project Gutenberg, and Substack, alongside cached database words.</title>
+            <rect width="110" height="70" rx="16" ry="16" fill="var(--bg-card)" stroke="var(--border-color)" stroke-width="1.5" />
+            <svg x="43" y="10" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+              <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+            </svg>
+            <text x="55" y="49" text-anchor="middle" class="node-label">Ingest</text>
+            <text x="55" y="59" text-anchor="middle" class="node-sublabel">Multi-Source</text>
+          </g>
+
+          <!-- Node 2: Rank -->
+          <g class="pipeline-node" transform="translate(146, 25)">
+            <title>Ranking: Candidates are filtered by POS &amp; length, then ranked using TF-IDF, Zipf frequency, or seed-target embeddings (daily rotating cluster centroids).</title>
+            <rect width="110" height="70" rx="16" ry="16" fill="var(--bg-card)" stroke="var(--border-color)" stroke-width="1.5" />
+            <svg x="43" y="10" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="4" y="4" width="16" height="16" rx="2" ry="2" />
+              <rect x="9" y="9" width="6" height="6" />
+              <line x1="9" y1="1" x2="9" y2="4" />
+              <line x1="15" y1="1" x2="15" y2="4" />
+              <line x1="9" y1="20" x2="9" y2="23" />
+              <line x1="15" y1="20" x2="15" y2="23" />
+              <line x1="20" y1="9" x2="23" y2="9" />
+              <line x1="20" y1="15" x2="23" y2="15" />
+              <line x1="1" y1="9" x2="4" y2="9" />
+              <line x1="1" y1="15" x2="4" y2="15" />
+            </svg>
+            <text x="55" y="49" text-anchor="middle" class="node-label">Rank</text>
+            <text x="55" y="59" text-anchor="middle" class="node-sublabel">Embed/TFIDF/Zipf</text>
+          </g>
+
+          <!-- Node 3: Validate -->
+          <g class="pipeline-node" transform="translate(287, 25)">
+            <title>Validation: Top ranked candidates are lazily checked via the Dictionary API to verify definitions and etymology.</title>
+            <rect width="110" height="70" rx="16" ry="16" fill="var(--bg-card)" stroke="var(--border-color)" stroke-width="1.5" />
+            <svg x="43" y="10" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+            </svg>
+            <text x="55" y="49" text-anchor="middle" class="node-label">Validate</text>
+            <text x="55" y="59" text-anchor="middle" class="node-sublabel">Lazy API Check</text>
+          </g>
+
+          <!-- Node 4: Select -->
+          <g class="pipeline-node" transform="translate(428, 25)">
+            <title>Selection: The final word is selected from validated candidates using a Softmax probability distribution scaled by temperature.</title>
+            <rect width="110" height="70" rx="16" ry="16" fill="var(--bg-card)" stroke="var(--border-color)" stroke-width="1.5" />
+            <svg x="43" y="10" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="4" y1="21" x2="4" y2="14" />
+              <line x1="4" y1="10" x2="4" y2="3" />
+              <line x1="12" y1="21" x2="12" y2="12" />
+              <line x1="12" y1="8" x2="12" y2="3" />
+              <line x1="20" y1="21" x2="20" y2="16" />
+              <line x1="20" y1="12" x2="20" y2="3" />
+              <line x1="2" y1="14" x2="6" y2="14" />
+              <line x1="10" y1="8" x2="14" y2="8" />
+              <line x1="18" y1="16" x2="22" y2="16" />
+            </svg>
+            <text x="55" y="49" text-anchor="middle" class="node-label">Select</text>
+            <text x="55" y="59" text-anchor="middle" class="node-sublabel">Softmax Selector</text>
+          </g>
+
+          <!-- Node 5: Deliver -->
+          <g class="pipeline-node" transform="translate(569, 25)">
+            <title>Delivery: The selected word is saved in SQLite, sent to subscribers via email, and served via FastAPI.</title>
+            <rect width="110" height="70" rx="16" ry="16" fill="var(--bg-card)" stroke="var(--border-color)" stroke-width="1.5" />
+            <svg x="43" y="10" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+              <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+              <line x1="6" y1="6" x2="6.01" y2="6" />
+              <line x1="6" y1="18" x2="6.01" y2="18" />
+            </svg>
+            <text x="55" y="49" text-anchor="middle" class="node-label">Deliver</text>
+            <text x="55" y="59" text-anchor="middle" class="node-sublabel">API, Email &amp; DB</text>
+          </g>
+        </svg>
+      </div>
+
+      <div class="pipeline-blog">
+        <p>Every day, <span class="brand-inline">word<span>.</span></span> selects a vocabulary word designed to challenge, inspire, or occasionally make you look up its pronunciation three times.</p>
+        <p>The journey begins with <strong>Ingestion</strong>, where a background scheduler fetches raw text corpora from diverse digital channels—ranging from Wikipedia and classic Project Gutenberg novels to Substack feeds—alongside previously cached database words.</p>
+        <p>Next, candidates undergo <strong>Filter &amp; Rank</strong>. To ensure reusability, a 365-day check filters out recently used selections. The remaining words are lemmatized and checked against a Part-of-Speech and length gate. Candidates are also filtered by a Zipf frequency "goldilocks" range to exclude overly common or obscure words. Survivors are ranked: either via term frequency (TF-IDF) across documents, Zipf frequency scoring to target rare vocabulary, or using a SentenceTransformer to compute cosine similarity against a daily rotating target cluster centroid (curated via K-Means and the Elbow Method).</p>
+        <p>Highly ranked candidates are then passed to <strong>Validation</strong>. Here, the system lazily queries the dictionary API to verify the word exists and retrieve its definition. Because API calls are rate-limited, validation is done on-demand, stopping the moment we find enough valid words to satisfy our candidate pool limit.</p>
+        <p>Finally, instead of a rigid argmax, the pipeline applies <strong>Softmax Selection</strong> scaled by a tunable temperature parameter. High temperatures distribute selection probability more evenly to foster variety and creativity, while low temperatures collapse the choice deterministically onto the highest-scoring candidate.</p>
+        <p>The chosen word is then saved to the database, delivered via email daily newsletter at 6:00 AM, and served via our FastAPI backend.</p>
+      </div>
+    </div>
+  </div>
+</footer>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/static/index.js?v=14" defer></script>
+{% endblock %}

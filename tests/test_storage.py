@@ -372,3 +372,23 @@ def test_voting_storage(temp_db: Path) -> None:
     storage.record_vote("2026-07-10", "serendipity", "sess_2", 0)
     assert storage.get_vote_counts("2026-07-10") == {"upvotes": 1, "downvotes": 0}
     assert storage.get_user_vote("2026-07-10", "sess_2") is None
+
+
+def test_save_and_get_related_words(temp_db: Path) -> None:
+    storage = Storage(db_path=temp_db, bootstrap=False)
+    related = [("loquacious", 0.95), ("taciturn", 0.88), ("gregarious", 0.82)]
+    storage.save_related_words("sagacious", related)
+
+    retrieved = storage.get_related_words("sagacious")
+    assert len(retrieved) == 3
+    assert retrieved[0]["word"] == "loquacious"
+    assert retrieved[0]["rank"] == 1
+    assert abs(retrieved[0]["score"] - 0.95) < 1e-4
+    assert retrieved[1]["word"] == "taciturn"
+    assert retrieved[2]["word"] == "gregarious"
+
+    # Case insensitive lookup
+    retrieved_upper = storage.get_related_words("SAGACIOUS")
+    assert len(retrieved_upper) == 3
+    assert retrieved_upper[0]["word"] == "loquacious"
+

@@ -419,6 +419,7 @@ def test_email_mime_headers_and_multipart_parts(
     monkeypatch.setattr(settings, "smtp_backend", "smtp")
     monkeypatch.setattr(settings, "smtp_use_ssl", False)
     monkeypatch.setattr(settings, "smtp_use_tls", False)
+    monkeypatch.setattr(settings, "app_base_url", "https://example.com")
 
     temp_storage.add_subscription("test@example.com", "token_test_123")
 
@@ -459,11 +460,10 @@ def test_email_mime_headers_and_multipart_parts(
     assert len(sent_emails) == 1
     msg = sent_emails[0]
 
-    # Verify custom deliverability headers are present
+    # Verify custom deliverability headers are present for https URL
     assert msg["List-Unsubscribe"] is not None
     assert "token_test_123" in msg["List-Unsubscribe"]
     assert msg["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"
-    assert msg["Precedence"] == "bulk"
 
     # Verify multipart/alternative structure has 2 payloads (text/plain and text/html)
     assert msg.is_multipart()
@@ -483,3 +483,73 @@ def test_email_mime_headers_and_multipart_parts(
     assert payloads[1].get_content_type() == "text/html"
     html_text = payloads[1].get_payload(decode=True).decode("utf-8")
     assert "<!DOCTYPE html>" in html_text
+
+
+def test_api_admin_send_email_duplicate_resend_message(
+    client: TestClient, temp_storage: Storage, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "smtp_backend", "console")
+    temp_storage.add_subscription("resend@example.com", "token_resend_123")
+    temp_storage.save_word_of_the_day(
+        date="2026-07-21",
+        word="resilience",
+        definition="Ability to bounce back.",
+        source="Wikipedia",
+        score=3.5,
+    )
+
+    from word_of_the_day.api import verify_admin
+
+    app.dependency_overrides[verify_admin] = lambda: True
+
+    try:
+        # 1st Send
+        res1 = client.post("/api/admin/send-email", json={"date": "2026-07-21", "force": False})
+        assert res1.status_code == 200
+        assert res1.json()["sent_count"] == 1
+
+        # 2nd Send (force=False) -> should return 200 with clear message explaining duplicate check
+        res2 = client.post("/api/admin/send-email", json={"date": "2026-07-21", "force": False})
+        assert res2.status_code == 200
+        assert res2.json()["sent_count"] == 0
+        assert "Force Resend" in res2.json()["message"]
+
+        # 3rd Send (force=True) -> should send again
+        res3 = client.post("/api/admin/send-email", json={"date": "2026-07-21", "force": True})
+        assert res3.status_code == 200
+        assert res3.json()["sent_count"] == 1
+    finally:
+        app.dependency_overrides.pop(verify_admin, None)
+
+
+def test_send_email_batch_smtp_error_raises(
+    temp_storage: Storage, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import smtplib
+
+    monkeypatch.setattr(settings, "smtp_backend", "smtp")
+    temp_storage.add_subscription("fail@example.com", "token_fail")
+
+    class FailingSMTP:
+        def __init__(self, *args, **kwargs):
+            raise smtplib.SMTPConnectError(421, "Connection refused")
+
+    monkeypatch.setattr(smtplib, "SMTP", FailingSMTP)
+
+    record = {
+        "date": "2026-07-21",
+        "word": "failure",
+        "definition": "Lack of success.",
+        "source": "Dictionary",
+        "score": 1.0,
+        "origin": None,
+        "extra_info": None,
+        "cluster_id": None,
+    }
+
+    subscribers = temp_storage.get_active_subscribers()
+    with pytest.raises(RuntimeError) as exc_info:
+        send_email_batch(subscribers, record, temp_storage)
+
+    assert "SMTP failure" in str(exc_info.value)
+

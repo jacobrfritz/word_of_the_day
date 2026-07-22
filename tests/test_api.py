@@ -517,3 +517,105 @@ def test_api_voting(client: TestClient, temp_storage: Storage) -> None:
             break
     else:
         pytest.fail("Rate limiter did not trigger 429")
+
+
+def test_get_word_page_success(client: TestClient, temp_storage: Storage) -> None:
+    # Save a word in history
+    temp_storage.save_word_of_the_day(
+        date="2026-07-10",
+        word="chimerical",
+        definition="(adjective) created by fancy",
+        source="gutenberg",
+        score=3.2,
+        origin="test origin",
+    )
+
+    response = client.get("/word/chimerical")
+    assert response.status_code == 200
+    html = response.text
+    # Check title and meta tags
+    assert "<title>CHIMERICAL - Word of the Day</title>" in html
+    assert '<meta name="description" content="created by fancy">' in html
+    # Check UI rendering
+    assert "chimerical" in html
+    assert "adjective" in html
+    assert "created by fancy" in html
+    assert "Classic Books" in html
+
+
+def test_get_word_page_case_insensitive(client: TestClient, temp_storage: Storage) -> None:
+    # Save word
+    temp_storage.save_word_of_the_day(
+        date="2026-07-10",
+        word="Chimerical",
+        definition="(adjective) created by fancy",
+        source="gutenberg",
+        score=3.2,
+    )
+
+    # Search with different casing
+    response = client.get("/word/CHIMERICAL")
+    assert response.status_code == 200
+    assert "<title>CHIMERICAL - Word of the Day</title>" in response.text
+
+
+def test_get_word_page_not_found(client: TestClient, temp_storage: Storage) -> None:
+    response = client.get("/word/nonexistentword")
+    assert response.status_code == 404
+    html = response.text
+    assert "Word Not Found" in html
+    assert "nonexistentword" in html
+
+
+def test_read_map(client: TestClient) -> None:
+    response = client.get("/map")
+    assert response.status_code == 200
+    assert "Vocabulary Map" in response.text
+    assert 'id="embeddingCanvas"' in response.text
+
+
+def test_get_word_page_renders_related_words(client: TestClient, temp_storage: Storage) -> None:
+    temp_storage.save_word_of_the_day(
+        date="2026-07-10",
+        word="sagacious",
+        definition="(adjective) wise and insightful",
+        source="gutenberg",
+        score=3.5,
+    )
+    temp_storage.save_related_words("sagacious", [("loquacious", 0.92), ("taciturn", 0.85)])
+
+    response = client.get("/word/sagacious")
+    assert response.status_code == 200
+    html = response.text
+    assert "Related Words" in html
+    assert "loquacious" in html
+    assert "Similarity: 92.00%" in html
+    assert "taciturn" in html
+    assert "Similarity: 85.00%" in html
+
+
+def test_get_word_page_wotd_badge_and_unfeatured(client: TestClient, temp_storage: Storage) -> None:
+    temp_storage.save_word_of_the_day(
+        date="2026-07-10",
+        word="sagacious",
+        definition="(adjective) wise and insightful",
+        source="gutenberg",
+        score=3.5,
+    )
+    temp_storage.save_related_words("sagacious", [("loquacious", 0.92)])
+
+    res_wotd = client.get("/word/sagacious")
+    assert res_wotd.status_code == 200
+    assert "Word of the Day" in res_wotd.text
+    assert "Related Words" in res_wotd.text
+
+    temp_storage.cache_definition("loquacious", True, "(adjective) talkative", "Latin")
+    res_unfeatured = client.get("/word/loquacious")
+    assert res_unfeatured.status_code == 200
+    assert "Vocabulary Entry" in res_unfeatured.text
+    assert "talkative" in res_unfeatured.text
+    assert "Related Words" not in res_unfeatured.text
+
+
+
+

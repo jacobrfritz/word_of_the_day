@@ -1,0 +1,113 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ record.word | upper }} - Word of the Day{% endblock %}
+
+{% block meta_description %}
+  <meta name="description" content="{{ definition }}">
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-grid single-card-layout" style="grid-template-columns: 1fr; width: 100%;">
+  <!-- Word Card Showcase -->
+  <section class="glass-card active-word-container" id="wordCard" style="display: block; opacity: 1; visibility: visible;">
+    <!-- Date header metadata -->
+    <div class="card-meta-header" style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap;">
+      <span class="date-badge" id="wordDate">{{ friendly_date }}</span>
+      {% if is_wotd %}
+        <span class="wotd-badge" title="Featured Word of the Day">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="margin-right: 4px; vertical-align: -1px;">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+          </svg>
+          Word of the Day
+        </span>
+      {% else %}
+        <span class="wotd-badge unfeatured">
+          Vocabulary Entry
+        </span>
+      {% endif %}
+    </div>
+
+    <!-- Word Showcase Header -->
+    <div class="word-header">
+      <div class="word-title-group">
+        <h2 class="word-title" id="wordText" style="text-transform: lowercase;">{{ record.word }}</h2>
+        <span class="part-of-speech" id="wordPos">{{ part_of_speech }}</span>
+      </div>
+
+      <!-- Action & Voting Buttons -->
+      <div class="header-controls">
+        {% include "components/vote_widget.html" %}
+
+        <!-- Action Buttons -->
+        <div class="action-buttons">
+          <button class="action-btn" id="speakBtn" aria-label="Listen to pronunciation" title="Listen">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M11 5L6 9H2v6h4l5 4V5z"></path>
+              <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+            </svg>
+          </button>
+          <button class="action-btn" id="copyBtn" aria-label="Copy word and definition" title="Copy">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            <span class="tooltip">Copied!</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Content Details -->
+    <p class="definition-box" id="wordDefinition">{{ definition }}</p>
+
+    {% if record.origin and record.origin.strip().lower() not in ['', 'not available'] %}
+      <div class="origin-box" id="wordOriginBox" style="display: block;">
+        <span class="origin-label">Etymology & Origin</span>
+        <span id="wordOriginText">{{ record.origin }}</span>
+      </div>
+    {% else %}
+      <div class="origin-box" id="wordOriginBox" style="display: none;">
+        <span class="origin-label">Etymology & Origin</span>
+        <span id="wordOriginText">-</span>
+      </div>
+    {% endif %}
+
+    <!-- Bottom stats metadata -->
+    <div class="meta-details">
+      <div class="meta-item">
+        <span class="meta-label">Discovery Source</span>
+        <span class="meta-value" id="wordSource">{{ source_name }}</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">Word Score</span>
+        <span class="meta-value" id="wordScore">{{ score_display }}</span>
+      </div>
+    </div>
+  </section>
+
+  {% if related_words %}
+  <section class="related-section" style="margin-top: 2rem; width: 100%;">
+    <div class="history-divider">
+      <span>Related Words</span>
+    </div>
+    <div class="related-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
+      {% for rel in related_words %}
+        <a href="/word/{{ rel.word | lower }}" class="history-item" style="text-decoration: none;">
+          <span class="hist-word">{{ rel.word }}</span>
+          <span class="hist-date">Similarity: {{ "%.2f"|format(rel.score * 100) }}%</span>
+          <span class="hist-details">Explore &rarr;</span>
+        </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  const pageData = {{ page_data | tojson | safe }};
+</script>
+<script src="/static/word.js?v=1" defer></script>
+{% endblock %}

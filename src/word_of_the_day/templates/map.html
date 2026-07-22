@@ -1,0 +1,39 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Vocabulary Map - Word of the Day{% endblock %}
+
+{% block meta_description %}
+  <meta name="description" content="Explore the interactive 2D semantic embedding space visualization of Word of the Day selections.">
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-grid single-card-layout" style="grid-template-columns: 1fr; width: 100%;">
+  <!-- Embedding Space Visualization -->
+  <section class="glass-card visual-grid-card" id="embeddingCard" style="display: block; opacity: 1; visibility: visible;">
+    <!-- Header metadata -->
+    <div class="card-meta-header">
+      <span class="date-badge">Embedding Space</span>
+    </div>
+
+    <!-- Showcase Header -->
+    <div class="word-header">
+      <div class="word-title-group">
+        <h2 class="word-title" style="font-size: 2.2rem; letter-spacing: -0.03em;">Vocabulary Map</h2>
+      </div>
+    </div>
+
+    <p class="definition-box" style="font-size: 0.9rem; margin-bottom: 1.25rem; min-height: unset; line-height: 1.45;">
+      Interactive 2D projection of the word embedding space. Hover over points to explore semantic neighborhoods. Click highlighted history words to load them.
+    </p>
+
+    <div class="canvas-wrapper" style="position: relative; width: 100%; aspect-ratio: 1; border-radius: 16px; overflow: visible; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--border-color);">
+      <canvas id="embeddingCanvas" style="display: block; width: 100%; height: 100%; cursor: crosshair;"></canvas>
+      <div id="embeddingTooltip" class="embedding-tooltip" style="display: none; position: absolute; pointer-events: none; z-index: 100; padding: 0.5rem 0.75rem; background: rgba(18, 18, 22, 0.9); border: 1px solid var(--border-focus); border-radius: 8px; color: var(--text-primary); font-family: var(--font-sans); font-size: 0.8rem; box-shadow: var(--shadow-subtle); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);"></div>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/static/index.js?v=14" defer></script>
+{% endblock %}
