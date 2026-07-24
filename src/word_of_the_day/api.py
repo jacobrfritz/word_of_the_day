@@ -70,6 +70,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             storage_instance = Storage()
             app.state.storage = storage_instance
         storage_instance.bootstrap_today_if_missing()
+
+        # Check and backfill related words for any historical entries missing them on startup
+        try:
+            from .main import run_backfill_related
+
+            run_backfill_related(storage=storage_instance)
+        except Exception as ex:
+            logger.warning(f"Error backfilling related words on app startup: {ex}")
     except Exception as e:
         logger.warning(f"Error bootstrapping today's word on app startup: {e}")
 

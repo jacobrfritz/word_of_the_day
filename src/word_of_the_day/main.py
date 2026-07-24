@@ -237,9 +237,7 @@ def compute_and_save_related_words(
             related_list = scorer.get_similar_words(word, k=3)
             if related_list:
                 storage.save_related_words(word, related_list)
-                logger.info(
-                    f"Saved {len(related_list)} related words for '{word}'."
-                )
+                logger.info(f"Saved {len(related_list)} related words for '{word}'.")
         except Exception as exc:
             logger.warning(f"Could not save related words for '{word}': {exc}")
 
@@ -273,6 +271,9 @@ def run_backfill_related(
     count = 0
     for record in history:
         w = record["word"]
+        # Skip if related words already exist for this word to optimize performance
+        if storage.get_related_words(w):
+            continue
         try:
             related_list = scorer.get_similar_words(w, k=3)
             if related_list:
@@ -281,7 +282,12 @@ def run_backfill_related(
         except Exception as exc:
             logger.warning(f"Failed to compute related words for '{w}': {exc}")
 
-    logger.info(f"Successfully backfilled related words for {count} words.")
+    if count > 0:
+        logger.info(f"Successfully backfilled related words for {count} words.")
+    else:
+        logger.info(
+            "All historical entries already have related words. No backfill needed."
+        )
 
 
 def run_api_server(db_path: str | None) -> None:
