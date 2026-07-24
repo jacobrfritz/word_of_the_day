@@ -140,7 +140,8 @@ def subscribe(
 
 
 class VoteRequest(BaseModel):
-    date: str
+    date: str | None = None
+    word: str | None = None
     direction: str  # "up", "down", or "clear"
     session_id: str
 
@@ -176,23 +177,50 @@ def cast_vote(
     # 1. Enforce rate limiting
     check_rate_limit(request, vote_req.session_id)
 
-    # 2. Validate date format
-    try:
-        datetime.strptime(vote_req.date, "%Y-%m-%d")
-    except ValueError as e:
-        raise HTTPException(
-            status_code=400, detail="Invalid date format. Expected YYYY-MM-DD."
-        ) from e
+    date_str = vote_req.date.strip() if vote_req.date else ""
+    word_str = vote_req.word.strip() if vote_req.word else ""
 
-    # 3. Check if the date has a Word of the Day record
-    record = storage.get_word_of_the_day(vote_req.date)
-    if not record:
+    # Resolve word and date
+    if word_str and not date_str:
+        record = storage.get_word_by_name(word_str)
+        if record:
+            date_str = record.get("date", "")
+    elif date_str and not word_str:
+        # Validate date format
+        try:
+            datetime.strptime(date_str, "%Y-%m-%d")
+        except ValueError as e:
+            raise HTTPException(
+                status_code=400, detail="Invalid date format. Expected YYYY-MM-DD."
+            ) from e
+
+        record = storage.get_word_of_the_day(date_str)
+        if not record:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No Word of the Day has been selected for date {date_str}.",
+            )
+        word_str = record["word"]
+    elif date_str and word_str:
+        try:
+            datetime.strptime(date_str, "%Y-%m-%d")
+        except ValueError as e:
+            raise HTTPException(
+                status_code=400, detail="Invalid date format. Expected YYYY-MM-DD."
+            ) from e
+    else:
         raise HTTPException(
-            status_code=404,
-            detail=f"No Word of the Day has been selected for date {vote_req.date}.",
+            status_code=400,
+            detail="Either 'word' or 'date' must be provided.",
         )
 
-    # 4. Validate direction
+    if not word_str:
+        raise HTTPException(
+            status_code=400,
+            detail="Word cannot be empty.",
+        )
+
+    # Validate direction
     direction = vote_req.direction.lower().strip()
     if direction not in ("up", "down", "clear"):
         raise HTTPException(
@@ -200,14 +228,14 @@ def cast_vote(
             detail="Invalid vote direction. Must be 'up', 'down', or 'clear'.",
         )
 
-    # 5. Map direction to numeric vote value
+    # Map direction to numeric vote value
     vote_value = 0
     if direction == "up":
         vote_value = 1
     elif direction == "down":
         vote_value = -1
 
-    # 6. Validate session_id
+    # Validate session_id
     session_id = vote_req.session_id.strip()
     if not session_id:
         raise HTTPException(
@@ -215,22 +243,22 @@ def cast_vote(
             detail="Session ID is required.",
         )
 
-    # 7. Record vote in storage
+    # Record vote in storage
     storage.record_vote(
-        date=vote_req.date,
-        word=record["word"],
+        date=date_str,
+        word=word_str,
         session_id=session_id,
         vote_value=vote_value,
     )
 
-    # 8. Retrieve updated vote data
-    counts = storage.get_vote_counts(vote_req.date)
-    user_vote = storage.get_user_vote(vote_req.date, session_id)
+    # Retrieve updated vote data
+    counts = storage.get_vote_counts(word_str)
+    user_vote = storage.get_user_vote(word_str, session_id)
 
     return {
         "success": True,
-        "date": vote_req.date,
-        "word": record["word"],
+        "date": date_str,
+        "word": word_str,
         "upvotes": counts["upvotes"],
         "downvotes": counts["downvotes"],
         "user_vote": user_vote,
@@ -268,17 +296,51 @@ def get_word(
     date: str | None = Query(
         None, description="Date in YYYY-MM-DD format (defaults to today)"
     ),
+    word: str | None = Query(
+        None, description="Optional word string to lookup details and votes for a specific word"
+    ),
     session_id: str | None = Query(
         None,
         description="Optional anonymous session identifier to retrieve user vote status",
     ),
     storage: Storage = Depends(get_storage),
-) -> WordOfTheDayRecord:
+) -> dict[str, Any] | WordOfTheDayRecord:
     """
-    Returns the Word of the Day record for the specified date.
-    If the date has placeholder/empty definition text, it dynamically resolves
+    Returns the Word of the Day record for the specified date or word.
+    If the date or word has placeholder/empty definition text, it dynamically resolves
     it using DictionaryClient and updates the record (caching it).
     """
+    if word is not None:
+        target_word = word.strip()
+        record = storage.get_word_by_name(target_word)
+        if not record:
+            with DictionaryClient(storage=storage) as dict_client:
+                is_valid, def_str, origin = dict_client.get_word_definition(target_word)
+            if not is_valid:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"The word '{target_word}' was not found in the dictionary.",
+                )
+            record = {
+                "date": "",
+                "word": target_word,
+                "definition": def_str,
+                "source": "Dictionary",
+                "score": None,
+                "extra_info": {},
+                "origin": origin,
+                "cluster_id": None,
+            }
+        else:
+            record["source"] = map_source_name(record["source"])
+
+        counts = storage.get_vote_counts(record["word"])
+        user_vote = storage.get_user_vote(record["word"], session_id) if session_id else None
+        record["upvotes"] = counts["upvotes"]
+        record["downvotes"] = counts["downvotes"]
+        record["user_vote"] = user_vote
+        return record
+
     if date is None:
         date = datetime.now().strftime("%Y-%m-%d")
 
@@ -688,13 +750,9 @@ def get_word_page(
         friendly_date = "Vocabulary Entry"
 
     source_name = map_source_name(record["source"])
-    if is_wotd and record.get("date"):
-        counts = storage.get_vote_counts(record["date"])
-        upvotes = counts["upvotes"]
-        downvotes = counts["downvotes"]
-    else:
-        upvotes = 0
-        downvotes = 0
+    counts = storage.get_vote_counts(record["word"])
+    upvotes = counts["upvotes"]
+    downvotes = counts["downvotes"]
 
     page_data = {
         "word": record["word"],

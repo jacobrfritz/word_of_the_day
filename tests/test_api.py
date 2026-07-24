@@ -519,6 +519,37 @@ def test_api_voting(client: TestClient, temp_storage: Storage) -> None:
         pytest.fail("Rate limiter did not trigger 429")
 
 
+def test_voting_api_non_wotd(client: TestClient, temp_storage: Storage) -> None:
+    temp_storage.cache_definition("ephemeral", True, "(adjective) short-lived", "Greek")
+
+    # Cast vote using word parameter
+    resp = client.post(
+        "/api/vote",
+        json={"word": "ephemeral", "direction": "up", "session_id": "sess_non_wotd"},
+    )
+    assert resp.status_code == 200
+    res_data = resp.json()
+    assert res_data["success"] is True
+    assert res_data["word"] == "ephemeral"
+    assert res_data["upvotes"] == 1
+    assert res_data["downvotes"] == 0
+    assert res_data["user_vote"] == 1
+
+    # Fetch word via /api/word?word=ephemeral
+    response = client.get("/api/word?word=ephemeral&session_id=sess_non_wotd")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["word"] == "ephemeral"
+    assert data["upvotes"] == 1
+    assert data["user_vote"] == 1
+
+    # Render word detail page
+    res_page = client.get("/word/ephemeral")
+    assert res_page.status_code == 200
+    assert "ephemeral" in res_page.text
+    assert 'id="voteScore">1</span>' in res_page.text
+
+
 def test_get_word_page_success(client: TestClient, temp_storage: Storage) -> None:
     # Save a word in history
     temp_storage.save_word_of_the_day(

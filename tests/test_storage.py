@@ -374,6 +374,22 @@ def test_voting_storage(temp_db: Path) -> None:
     assert storage.get_user_vote("2026-07-10", "sess_2") is None
 
 
+def test_voting_storage_non_wotd(temp_db: Path) -> None:
+    storage = Storage(db_path=temp_db, bootstrap=False)
+
+    # Voting on a word without a WOTD date
+    assert storage.get_vote_counts("ephemeral") == {"upvotes": 0, "downvotes": 0}
+    assert storage.get_user_vote("ephemeral", "sess_1") is None
+
+    storage.record_vote("", "ephemeral", "sess_1", 1)
+    assert storage.get_vote_counts("ephemeral") == {"upvotes": 1, "downvotes": 0}
+    assert storage.get_user_vote("ephemeral", "sess_1") == 1
+
+    storage.record_vote("", "ephemeral", "sess_2", -1)
+    assert storage.get_vote_counts("ephemeral") == {"upvotes": 1, "downvotes": 1}
+    assert storage.get_user_vote("ephemeral", "sess_2") == -1
+
+
 def test_save_and_get_related_words(temp_db: Path) -> None:
     storage = Storage(db_path=temp_db, bootstrap=False)
     related = [("loquacious", 0.95), ("taciturn", 0.88), ("gregarious", 0.82)]

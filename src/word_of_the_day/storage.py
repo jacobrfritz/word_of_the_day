@@ -237,15 +237,43 @@ class Storage:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS votes (
-                    date TEXT NOT NULL,
+                    date TEXT,
                     word TEXT NOT NULL,
                     session_id TEXT NOT NULL,
                     vote_value INTEGER NOT NULL, -- 1 for upvote, -1 for downvote
                     timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY (date, session_id)
+                    PRIMARY KEY (word, session_id)
                 )
                 """
             )
+            # Migration check: Ensure primary key is (word, session_id)
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(votes)")
+            vote_cols = cursor.fetchall()
+            pk_cols = [col[1] for col in vote_cols if col[5] > 0]
+            if pk_cols != ["word", "session_id"]:
+                logger.info("Migrating votes table schema to PRIMARY KEY (word, session_id)...")
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS votes_new (
+                        date TEXT,
+                        word TEXT NOT NULL,
+                        session_id TEXT NOT NULL,
+                        vote_value INTEGER NOT NULL,
+                        timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (word, session_id)
+                    )
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO votes_new (date, word, session_id, vote_value, timestamp)
+                    SELECT date, LOWER(word), session_id, vote_value, timestamp FROM votes
+                    """
+                )
+                conn.execute("DROP TABLE votes")
+                conn.execute("ALTER TABLE votes_new RENAME TO votes")
+
             conn.execute("CREATE INDEX IF NOT EXISTS idx_votes_word ON votes(word)")
 
             # One-time migration: delete old bootstrapped words from wotd_history
@@ -864,28 +892,44 @@ class Storage:
         self, date: str, word: str, session_id: str, vote_value: int
     ) -> None:
         """
-        Records or updates a user's vote. If vote_value is 0, deletes the vote.
+        Records or updates a user's vote for a word. If vote_value is 0, deletes the vote.
         """
+        cleaned_word = word.strip().lower()
+        date_val = date.strip() if date else ""
         with self._connect() as conn:
             if vote_value == 0:
                 conn.execute(
-                    "DELETE FROM votes WHERE date = ? AND session_id = ?",
-                    (date, session_id),
+                    "DELETE FROM votes WHERE LOWER(word) = ? AND session_id = ?",
+                    (cleaned_word, session_id),
                 )
             else:
                 conn.execute(
                     """
-                    INSERT OR REPLACE INTO votes (date, word, session_id, vote_value, timestamp)
+                    INSERT INTO votes (date, word, session_id, vote_value, timestamp)
                     VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(word, session_id) DO UPDATE SET
+                        date = CASE WHEN excluded.date != '' THEN excluded.date ELSE votes.date END,
+                        vote_value = excluded.vote_value,
+                        timestamp = excluded.timestamp
                     """,
-                    (date, word, session_id, vote_value),
+                    (date_val, cleaned_word, session_id, vote_value),
                 )
             conn.commit()
 
-    def get_vote_counts(self, date: str) -> dict[str, int]:
+    def get_vote_counts(self, date_or_word: str) -> dict[str, int]:
         """
-        Returns the count of upvotes and downvotes for a given date.
+        Returns the count of upvotes and downvotes for a given date (YYYY-MM-DD) or word.
         """
+        identifier = date_or_word.strip().lower()
+        target_word = identifier
+        target_date = ""
+
+        if len(identifier) == 10 and identifier.count("-") == 2:
+            target_date = identifier
+            record = self.get_word_of_the_day(target_date)
+            if record:
+                target_word = record["word"].strip().lower()
+
         with self._connect() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -894,9 +938,9 @@ class Storage:
                     SUM(CASE WHEN vote_value = 1 THEN 1 ELSE 0 END) as upvotes,
                     SUM(CASE WHEN vote_value = -1 THEN 1 ELSE 0 END) as downvotes
                 FROM votes
-                WHERE date = ?
+                WHERE LOWER(word) = ? OR (date != '' AND date = ?)
                 """,
-                (date,),
+                (target_word, target_date),
             )
             row = cursor.fetchone()
             if row:
@@ -906,15 +950,28 @@ class Storage:
                 }
             return {"upvotes": 0, "downvotes": 0}
 
-    def get_user_vote(self, date: str, session_id: str) -> int | None:
+    def get_user_vote(self, date_or_word: str, session_id: str) -> int | None:
         """
-        Returns the vote value (-1, 1, or None) cast by a session on a date.
+        Returns the vote value (-1, 1, or None) cast by a session on a date or word.
         """
+        identifier = date_or_word.strip().lower()
+        target_word = identifier
+        target_date = ""
+
+        if len(identifier) == 10 and identifier.count("-") == 2:
+            target_date = identifier
+            record = self.get_word_of_the_day(target_date)
+            if record:
+                target_word = record["word"].strip().lower()
+
         with self._connect() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT vote_value FROM votes WHERE date = ? AND session_id = ?",
-                (date, session_id),
+                """
+                SELECT vote_value FROM votes
+                WHERE (LOWER(word) = ? OR (date != '' AND date = ?)) AND session_id = ?
+                """,
+                (target_word, target_date, session_id),
             )
             row = cursor.fetchone()
             return row[0] if row else None

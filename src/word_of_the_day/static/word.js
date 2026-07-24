@@ -112,10 +112,11 @@ function updateVoteUI(upvotes, downvotes, userVote) {
 }
 
 async function fetchInitialVoteState() {
-  if (!pageData.date) return;
+  if (!pageData.word) return;
   const sessionId = getSessionId();
   try {
-    const response = await fetch(`/api/word?date=${pageData.date}&session_id=${sessionId}`);
+    const queryParam = pageData.date ? `date=${encodeURIComponent(pageData.date)}` : `word=${encodeURIComponent(pageData.word)}`;
+    const response = await fetch(`/api/word?${queryParam}&session_id=${sessionId}`);
     if (response.ok) {
       const data = await response.json();
       updateVoteUI(data.upvotes || 0, data.downvotes || 0, data.user_vote);
@@ -126,7 +127,7 @@ async function fetchInitialVoteState() {
 }
 
 async function castVote(direction) {
-  if (!pageData.date) return;
+  if (!pageData.word) return;
 
   const sessionId = getSessionId();
   const upvoteBtn = elements.upvoteBtn;
@@ -146,7 +147,8 @@ async function castVote(direction) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        date: pageData.date,
+        word: pageData.word,
+        date: pageData.date || '',
         direction: targetDirection,
         session_id: sessionId,
       }),
