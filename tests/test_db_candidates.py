@@ -1,11 +1,9 @@
 # tests/test_db_candidates.py
-import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-
 from word_of_the_day import main
 from word_of_the_day.api import app, verify_admin
 from word_of_the_day.storage import Storage
@@ -13,8 +11,11 @@ from word_of_the_day.storage import Storage
 
 @pytest.fixture
 def temp_db() -> Path:
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
-        db_path = Path(tmp.name)
+    tmp_dir = Path(__file__).resolve().parent.parent / ".test_tmp"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    import uuid
+
+    db_path = tmp_dir / f"test_cand_{uuid.uuid4().hex}.db"
     yield db_path
     import gc
     import sqlite3
@@ -39,9 +40,15 @@ def test_storage_get_all_valid_cached_words(temp_db: Path) -> None:
     storage = Storage(db_path=temp_db, bootstrap=False)
 
     # Cache some valid and invalid words with/without source
-    storage.cache_definition("ephemeral", True, "lasting a short time", "Greek", source="Wikipedia")
-    storage.cache_definition("invalidword", False, "Not found", None, source="Poetry DB")
-    storage.cache_definition("serendipity", True, "happy chance", "Persian")  # NULL source for backward compatibility
+    storage.cache_definition(
+        "ephemeral", True, "lasting a short time", "Greek", source="Wikipedia"
+    )
+    storage.cache_definition(
+        "invalidword", False, "Not found", None, source="Poetry DB"
+    )
+    storage.cache_definition(
+        "serendipity", True, "happy chance", "Persian"
+    )  # NULL source for backward compatibility
 
     valid_cached = storage.get_all_valid_cached_words()
     # Should only return valid words
@@ -67,7 +74,9 @@ def test_run_pipeline_draws_from_database(
 ) -> None:
     # Set up DB cache
     storage = Storage(db_path=temp_db, bootstrap=False)
-    storage.cache_definition("serendipity", True, "happy chance", "Persian", source="Classic Poetry")
+    storage.cache_definition(
+        "serendipity", True, "happy chance", "Persian", source="Classic Poetry"
+    )
 
     # Mock generator to return no new text
     mock_generator = MagicMock()
@@ -98,7 +107,9 @@ def test_api_explore_draws_from_database(
 ) -> None:
     # Set up DB cache
     storage = Storage(db_path=temp_db, bootstrap=False)
-    storage.cache_definition("serendipity", True, "happy chance", "Persian", source="Classic Poetry")
+    storage.cache_definition(
+        "serendipity", True, "happy chance", "Persian", source="Classic Poetry"
+    )
 
     # Mock generator to return no new text
     mock_generator = MagicMock()

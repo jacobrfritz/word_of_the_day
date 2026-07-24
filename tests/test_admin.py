@@ -1,5 +1,4 @@
 import hashlib
-import tempfile
 from collections.abc import Generator
 from pathlib import Path
 
@@ -13,18 +12,26 @@ from word_of_the_day.storage import Storage
 
 @pytest.fixture
 def temp_storage() -> Generator[Storage, None, None]:
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
-        db_path = Path(tmp.name)
+    tmp_dir = Path(__file__).resolve().parent.parent / ".test_tmp"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    import uuid
 
+    db_path = tmp_dir / f"test_admin_{uuid.uuid4().hex}.db"
     storage = Storage(db_path=db_path, bootstrap=False)
 
     app.dependency_overrides[get_storage] = lambda: storage
+    app.state.storage = storage
 
     yield storage
 
     app.dependency_overrides.pop(get_storage, None)
+    if hasattr(app.state, "storage"):
+        delattr(app.state, "storage")
     if db_path.exists():
-        db_path.unlink()
+        try:
+            db_path.unlink()
+        except OSError:
+            pass
 
 
 @pytest.fixture
@@ -162,3 +169,39 @@ def test_skip_auto_selection_if_exists(temp_storage: Storage) -> None:
     assert record is not None
     assert record["word"] == "prescheduled"
     assert record["definition"] == "predefined definition"
+
+
+def test_admin_word_fallback_when_invalid(
+    client: TestClient, temp_storage: Storage
+) -> None:
+    password = settings.admin_password
+    token = hashlib.sha256(password.encode("utf-8")).hexdigest()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Seed cache as invalid to simulate dictionary rejection
+    temp_storage.cache_definition("invalidwordxyz", False, "Not valid", None)
+
+    payload = {"date": "2026-07-21", "word": "invalidwordxyz"}
+    response = client.post("/api/admin/word", json=payload, headers=headers)
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+
+    record = temp_storage.get_word_of_the_day("2026-07-21")
+    assert record is not None
+    assert record["word"] == "invalidwordxyz"
+    assert "(Manual)" in record["definition"]
+
+
+def test_bootstrap_today_if_missing(temp_storage: Storage) -> None:
+    from datetime import datetime
+
+    today_str = datetime.now().strftime("%Y-%m-%d")
+
+    # Before: today has no record
+    assert temp_storage.get_word_of_the_day(today_str) is None
+
+    # Act: call bootstrap_today_if_missing
+    record = temp_storage.bootstrap_today_if_missing()
+    assert record is not None
+    assert record["date"] == today_str
+    assert record["word"] is not None

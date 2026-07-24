@@ -29,6 +29,9 @@ const elements = {
   scheduleForm: document.getElementById('scheduleForm'),
   wordDateInput: document.getElementById('wordDateInput'),
   wordWord: document.getElementById('wordWord'),
+  wordDefinition: document.getElementById('wordDefinition'),
+  wordOrigin: document.getElementById('wordOrigin'),
+  wordSource: document.getElementById('wordSource'),
   scheduleSuccess: document.getElementById('scheduleSuccess'),
   historyTableBody: document.getElementById('historyTableBody'),
 
@@ -490,7 +493,10 @@ function setupEventListeners() {
     e.preventDefault();
     const payload = {
       date: elements.wordDateInput.value,
-      word: elements.wordWord.value
+      word: elements.wordWord.value,
+      definition: elements.wordDefinition && elements.wordDefinition.value ? elements.wordDefinition.value.trim() : null,
+      origin: elements.wordOrigin && elements.wordOrigin.value ? elements.wordOrigin.value.trim() : null,
+      source: elements.wordSource && elements.wordSource.value ? elements.wordSource.value.trim() : null
     };
 
     try {
@@ -507,8 +513,11 @@ function setupEventListeners() {
 
       showFlashMessage('scheduleSuccess', 'Word of the Day scheduled successfully!');
 
-      // Reset form (except date)
+      // Reset form fields (except date)
       elements.wordWord.value = '';
+      if (elements.wordDefinition) elements.wordDefinition.value = '';
+      if (elements.wordOrigin) elements.wordOrigin.value = '';
+      if (elements.wordSource) elements.wordSource.value = '';
 
       loadHistory();
     } catch (err) {

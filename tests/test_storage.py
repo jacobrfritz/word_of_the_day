@@ -1,5 +1,4 @@
 # tests/test_storage.py
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -8,9 +7,11 @@ from word_of_the_day.storage import Storage
 
 @pytest.fixture
 def temp_db() -> Path:
-    # Set up a temporary database file
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
-        db_path = Path(tmp.name)
+    tmp_dir = Path(__file__).resolve().parent.parent / ".test_tmp"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    import uuid
+
+    db_path = tmp_dir / f"test_storage_{uuid.uuid4().hex}.db"
     yield db_path
     # Tear down
     import gc
@@ -391,4 +392,3 @@ def test_save_and_get_related_words(temp_db: Path) -> None:
     retrieved_upper = storage.get_related_words("SAGACIOUS")
     assert len(retrieved_upper) == 3
     assert retrieved_upper[0]["word"] == "loquacious"
-

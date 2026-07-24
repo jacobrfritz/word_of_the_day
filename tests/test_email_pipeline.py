@@ -1,5 +1,4 @@
 # tests/test_email_pipeline.py
-import tempfile
 from collections.abc import Generator
 from pathlib import Path
 
@@ -17,9 +16,11 @@ from word_of_the_day.storage import Storage
 
 @pytest.fixture
 def temp_storage() -> Generator[Storage, None, None]:
-    # Use a temp database file for testing
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
-        db_path = Path(tmp.name)
+    tmp_dir = Path(__file__).resolve().parent.parent / ".test_tmp"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    import uuid
+
+    db_path = tmp_dir / f"test_email_{uuid.uuid4().hex}.db"
 
     storage = Storage(db_path=db_path, bootstrap=False)
 
@@ -504,18 +505,24 @@ def test_api_admin_send_email_duplicate_resend_message(
 
     try:
         # 1st Send
-        res1 = client.post("/api/admin/send-email", json={"date": "2026-07-21", "force": False})
+        res1 = client.post(
+            "/api/admin/send-email", json={"date": "2026-07-21", "force": False}
+        )
         assert res1.status_code == 200
         assert res1.json()["sent_count"] == 1
 
         # 2nd Send (force=False) -> should return 200 with clear message explaining duplicate check
-        res2 = client.post("/api/admin/send-email", json={"date": "2026-07-21", "force": False})
+        res2 = client.post(
+            "/api/admin/send-email", json={"date": "2026-07-21", "force": False}
+        )
         assert res2.status_code == 200
         assert res2.json()["sent_count"] == 0
         assert "Force Resend" in res2.json()["message"]
 
         # 3rd Send (force=True) -> should send again
-        res3 = client.post("/api/admin/send-email", json={"date": "2026-07-21", "force": True})
+        res3 = client.post(
+            "/api/admin/send-email", json={"date": "2026-07-21", "force": True}
+        )
         assert res3.status_code == 200
         assert res3.json()["sent_count"] == 1
     finally:
@@ -552,4 +559,3 @@ def test_send_email_batch_smtp_error_raises(
         send_email_batch(subscribers, record, temp_storage)
 
     assert "SMTP failure" in str(exc_info.value)
-
