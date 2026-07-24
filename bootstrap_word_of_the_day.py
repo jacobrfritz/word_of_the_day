@@ -105,7 +105,24 @@ def save_to_csv(data, filename="word_of_the_day_embeddings.csv"):
     print(f"Success! CSV updated. Total records: {len(data)}")
 
 
+def sync_to_storage():
+    """Syncs CSV seed words into the SQLite database and ensures today's word is set."""
+    try:
+        import sys
+
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
+        from word_of_the_day.storage import Storage
+
+        storage = Storage()
+        storage._bootstrap_from_csv()
+        storage.bootstrap_today_if_missing()
+        print("Synced bootstrap entries to SQLite database successfully.")
+    except Exception as e:
+        print(f"Notice: Could not sync to SQLite database: {e}")
+
+
 if __name__ == "__main__":
     csv_path = os.environ.get("SEED_CSV_PATH", "word_of_the_day_embeddings.csv")
     wotd_data = fetch_new_words(filename=csv_path)
     save_to_csv(wotd_data, filename=csv_path)
+    sync_to_storage()

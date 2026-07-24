@@ -86,13 +86,25 @@
     <div class="glass-card mb-2">
       <h2 class="panel-title" id="formTitle">Schedule Word of the Day</h2>
       <form id="scheduleForm" class="admin-form grid-form">
-        <div class="form-group col-6">
-          <label for="wordDate">Target Date</label>
+        <div class="form-group col-4">
+          <label for="wordDateInput">Target Date</label>
           <input type="date" id="wordDateInput" required>
         </div>
-        <div class="form-group col-6">
+        <div class="form-group col-4">
           <label for="wordWord">Word</label>
           <input type="text" id="wordWord" required placeholder="e.g. serendipity">
+        </div>
+        <div class="form-group col-4">
+          <label for="wordSource">Source</label>
+          <input type="text" id="wordSource" placeholder="Manual Selection">
+        </div>
+        <div class="form-group col-12">
+          <label for="wordDefinition">Definition (Optional)</label>
+          <input type="text" id="wordDefinition" placeholder="Leave empty to auto-resolve via dictionary API...">
+        </div>
+        <div class="form-group col-12">
+          <label for="wordOrigin">Etymology / Origin (Optional)</label>
+          <input type="text" id="wordOrigin" placeholder="e.g. Latin serendipitas...">
         </div>
         <div class="form-group col-12">
           <button type="submit" class="submit-btn">Save Selection</button>

@@ -1,6 +1,7 @@
 # src/word_of_the_day/storage.py
 import csv
 import json
+import os
 import sqlite3
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -68,17 +69,19 @@ class Storage:
         # Check if the database path directory is writable, if not, fallback to a writable location (e.g. temp directory)
         try:
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
-            # Try opening/creating a dummy file at the database path to check write permissions
-            with open(self.db_path, "a"):
+            test_file = self.db_path.parent / f".write_test_{os.getpid()}"
+            with open(test_file, "w"):
                 pass
+            if test_file.exists():
+                test_file.unlink()
         except OSError as e:
-            import tempfile
-
-            fallback_dir = Path(tempfile.gettempdir())
+            project_root = Path(__file__).resolve().parent.parent.parent
+            fallback_dir = project_root / ".tmp"
+            fallback_dir.mkdir(parents=True, exist_ok=True)
             fallback_path = fallback_dir / "word_of_the_day.db"
             logger.error(
                 f"Configured database path '{self.db_path}' is not writable ({e}). "
-                f"Falling back to temporary database path: '{fallback_path}'"
+                f"Falling back to local temporary database path: '{fallback_path}'"
             )
             self.db_path = fallback_path
 
@@ -88,10 +91,13 @@ class Storage:
 
     @contextmanager
     def _connect(self) -> Generator[sqlite3.Connection, None, None]:
-        """Provides a thread-safe connection running in WAL mode with a busy timeout."""
+        """Provides a thread-safe connection running in WAL mode (or DELETE fallback) with a busy timeout."""
         conn = sqlite3.connect(self.db_path)
         try:
-            conn.execute("PRAGMA journal_mode=WAL;")
+            try:
+                conn.execute("PRAGMA journal_mode=WAL;")
+            except sqlite3.OperationalError:
+                conn.execute("PRAGMA journal_mode=DELETE;")
             conn.execute("PRAGMA busy_timeout=5000;")
             yield conn
         finally:
@@ -288,21 +294,10 @@ class Storage:
 
     def _bootstrap_from_csv(self) -> None:
         """
-        Seeds the database seed_words table from bootstrap.csv or word_of_the_day_embeddings.csv
-        if the table is currently empty.
+        Seeds the database seed_words table from bootstrap.csv or word_of_the_day_embeddings.csv.
+        Uses INSERT OR IGNORE to sync any new entries without duplicating existing records.
         """
-        try:
-            with self._connect() as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT COUNT(*) FROM seed_words")
-                count: int = cursor.fetchone()[0]
-                if count > 0:
-                    return
-        except sqlite3.Error as e:
-            logger.error(f"Failed checking row count during bootstrap: {e}")
-            return
-
-        # Table is empty, look for seed CSV files in the project root
+        # Look for seed CSV files in the project root
         project_root = Path(__file__).resolve().parent.parent.parent
         bootstrap_csv = project_root / "bootstrap.csv"
         if not bootstrap_csv.exists():
@@ -315,7 +310,7 @@ class Storage:
             logger.info("No seed CSV files found. Database started empty.")
             return
 
-        logger.info(f"Seeding seed_words database table from {bootstrap_csv.name}...")
+        logger.info(f"Syncing seed_words database table from {bootstrap_csv.name}...")
         records: list[tuple[str, str]] = []
         try:
             with open(bootstrap_csv, encoding="utf-8") as f:
@@ -337,7 +332,8 @@ class Storage:
         if records:
             try:
                 with self._connect() as conn:
-                    conn.executemany(
+                    cursor = conn.cursor()
+                    cursor.executemany(
                         """
                         INSERT OR IGNORE INTO seed_words (date, word)
                         VALUES (?, ?)
@@ -346,10 +342,98 @@ class Storage:
                     )
                     conn.commit()
                 logger.info(
-                    f"Successfully loaded {len(records)} seed records into seed_words table."
+                    f"Successfully synced {len(records)} seed records into seed_words table."
                 )
             except sqlite3.Error as e:
                 logger.error(f"Error inserting bootstrap records: {e}")
+
+    def bootstrap_today_if_missing(self) -> WordOfTheDayRecord | None:
+        """
+        Checks if today's date has a Word of the Day entry. If missing,
+        attempts to bootstrap it from seed_words or auto-select a word.
+        Returns the WordOfTheDayRecord for today.
+        """
+        from datetime import datetime
+
+        today_str = datetime.now().strftime("%Y-%m-%d")
+
+        existing = self.get_word_of_the_day(today_str)
+        if existing:
+            return existing
+
+        # Ensure seed words table is populated from seed CSV
+        self._bootstrap_from_csv()
+
+        # Check if seed_words has an entry for today
+        target_word: str | None = None
+        try:
+            with self._connect() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT word FROM seed_words WHERE date = ?", (today_str,)
+                )
+                row = cursor.fetchone()
+                if row:
+                    target_word = row[0]
+        except sqlite3.Error as e:
+            logger.error(f"Error querying seed_words for today: {e}")
+
+        if not target_word:
+            # Pick a candidate word from seed_words that hasn't been used recently
+            used_words = self.get_used_words(
+                days_threshold=365, reference_date=today_str
+            )
+            try:
+                with self._connect() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT word FROM seed_words ORDER BY date DESC")
+                    candidates = [r[0] for r in cursor.fetchall()]
+
+                for cand in candidates:
+                    cand_clean = cand.strip().lower()
+                    if cand_clean not in used_words:
+                        target_word = cand_clean
+                        break
+            except sqlite3.Error as e:
+                logger.error(f"Error querying seed_words candidates: {e}")
+
+        if not target_word:
+            target_word = "serendipity"
+
+        logger.info(
+            f"Bootstrapping missing Word of the Day for today ({today_str}): '{target_word}'"
+        )
+
+        # Resolve definition
+        def_str = f"(bootstrapped) Primary definition for '{target_word}'."
+        origin: str | None = None
+        try:
+            from .dictionary import DictionaryClient
+
+            with DictionaryClient(storage=self) as dict_client:
+                is_valid, resolved_def, resolved_origin = (
+                    dict_client.get_word_definition(target_word)
+                )
+                if is_valid and resolved_def:
+                    def_str = resolved_def
+                    origin = resolved_origin
+        except Exception as e:
+            logger.warning(f"Error getting dictionary definition during bootstrap: {e}")
+
+        from wordfreq import zipf_frequency
+
+        score = zipf_frequency(target_word, "en")
+
+        self.save_word_of_the_day(
+            date=today_str,
+            word=target_word,
+            definition=def_str,
+            source="Seed RSS Feed",
+            score=score,
+            extra_info={"bootstrapped": True},
+            origin=origin,
+        )
+        return self.get_word_of_the_day(today_str)
 
     def get_cached_definition(self, word: str) -> tuple[bool, str, str | None] | None:
         """
@@ -682,7 +766,6 @@ class Storage:
                     "cluster_id": row["cluster_id"],
                 }
             return None
-
 
     def get_history(self, limit: int | None = None) -> list[WordOfTheDayRecord]:
         """

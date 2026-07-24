@@ -1,5 +1,4 @@
 # tests/test_api.py
-import tempfile
 from collections.abc import Generator
 from pathlib import Path
 
@@ -11,23 +10,30 @@ from word_of_the_day.storage import Storage
 
 @pytest.fixture
 def temp_storage() -> Generator[Storage, None, None]:
-    # Use a temp database file for testing the API routes
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
-        db_path = Path(tmp.name)
+    tmp_dir = Path(__file__).resolve().parent.parent / ".test_tmp"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    import uuid
 
+    db_path = tmp_dir / f"test_api_{uuid.uuid4().hex}.db"
     storage = Storage(db_path=db_path, bootstrap=False)
 
     # Register FastAPI dependency override
     from word_of_the_day.api import get_storage
 
     app.dependency_overrides[get_storage] = lambda: storage
+    app.state.storage = storage
 
     yield storage
 
     # Restore
     app.dependency_overrides.pop(get_storage, None)
+    if hasattr(app.state, "storage"):
+        delattr(app.state, "storage")
     if db_path.exists():
-        db_path.unlink()
+        try:
+            db_path.unlink()
+        except OSError:
+            pass
 
 
 @pytest.fixture
@@ -574,7 +580,9 @@ def test_get_word_page_success(client: TestClient, temp_storage: Storage) -> Non
     assert "Classic Books" in html
 
 
-def test_get_word_page_case_insensitive(client: TestClient, temp_storage: Storage) -> None:
+def test_get_word_page_case_insensitive(
+    client: TestClient, temp_storage: Storage
+) -> None:
     # Save word
     temp_storage.save_word_of_the_day(
         date="2026-07-10",
@@ -605,7 +613,9 @@ def test_read_map(client: TestClient) -> None:
     assert 'id="embeddingCanvas"' in response.text
 
 
-def test_get_word_page_renders_related_words(client: TestClient, temp_storage: Storage) -> None:
+def test_get_word_page_renders_related_words(
+    client: TestClient, temp_storage: Storage
+) -> None:
     temp_storage.save_word_of_the_day(
         date="2026-07-10",
         word="sagacious",
@@ -613,7 +623,9 @@ def test_get_word_page_renders_related_words(client: TestClient, temp_storage: S
         source="gutenberg",
         score=3.5,
     )
-    temp_storage.save_related_words("sagacious", [("loquacious", 0.92), ("taciturn", 0.85)])
+    temp_storage.save_related_words(
+        "sagacious", [("loquacious", 0.92), ("taciturn", 0.85)]
+    )
 
     response = client.get("/wotd/word/sagacious")
     assert response.status_code == 200
@@ -625,7 +637,9 @@ def test_get_word_page_renders_related_words(client: TestClient, temp_storage: S
     assert "Similarity: 85.00%" in html
 
 
-def test_get_word_page_wotd_badge_and_unfeatured(client: TestClient, temp_storage: Storage) -> None:
+def test_get_word_page_wotd_badge_and_unfeatured(
+    client: TestClient, temp_storage: Storage
+) -> None:
     temp_storage.save_word_of_the_day(
         date="2026-07-10",
         word="sagacious",
@@ -646,7 +660,3 @@ def test_get_word_page_wotd_badge_and_unfeatured(client: TestClient, temp_storag
     assert "Vocabulary Entry" in res_unfeatured.text
     assert "talkative" in res_unfeatured.text
     assert "Related Words" not in res_unfeatured.text
-
-
-
-

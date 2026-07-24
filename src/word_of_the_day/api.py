@@ -62,6 +62,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             "CORS_ORIGINS is set to wildcard '*'. "
             "Restrict this to your production domain(s) before deploying."
         )
+    # Perform immediate startup bootstrap check to guarantee today's word exists
+    try:
+        if hasattr(app.state, "storage") and isinstance(app.state.storage, Storage):
+            storage_instance = app.state.storage
+        else:
+            storage_instance = Storage()
+            app.state.storage = storage_instance
+        storage_instance.bootstrap_today_if_missing()
+
+        # Check and backfill related words for any historical entries missing them on startup
+        try:
+            from .main import run_backfill_related
+
+            run_backfill_related(storage=storage_instance)
+        except Exception as ex:
+            logger.warning(f"Error backfilling related words on app startup: {ex}")
+    except Exception as e:
+        logger.warning(f"Error bootstrapping today's word on app startup: {e}")
+
     scheduler = DailyScheduler()
     scheduler.start()
     try:
@@ -760,7 +779,9 @@ def get_word_page(
 
     if is_wotd and record.get("date"):
         try:
-            friendly_date = datetime.strptime(record["date"], "%Y-%m-%d").strftime("%A, %B %d, %Y")
+            friendly_date = datetime.strptime(record["date"], "%Y-%m-%d").strftime(
+                "%A, %B %d, %Y"
+            )
         except ValueError:
             friendly_date = record["date"]
     else:
@@ -917,21 +938,18 @@ def admin_save_word(
                 is_valid, resolved_def, resolved_origin = (
                     dict_client.get_word_definition(word_clean, source=source)
                 )
-                if not is_valid:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"'{payload.word}' is not a valid dictionary word according to the Merriam-Webster API.",
+                if is_valid and resolved_def:
+                    definition = resolved_def
+                    if not origin:
+                        origin = resolved_origin
+                else:
+                    logger.warning(
+                        f"Dictionary lookup for manual word '{word_clean}' returned non-valid: {resolved_def}. Falling back."
                     )
-                definition = resolved_def
-                origin = resolved_origin
-        except HTTPException:
-            raise
+                    definition = f"(Manual) Primary entry for '{word_clean}'."
         except Exception as e:
-            logger.error(f"Error during dictionary lookup for '{word_clean}': {e}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Error looking up '{payload.word}' definition: {str(e)}",
-            ) from e
+            logger.warning(f"Error during dictionary lookup for '{word_clean}': {e}")
+            definition = f"(Manual) Primary entry for '{word_clean}'."
 
     if not source:
         source = "Organic"
@@ -974,6 +992,20 @@ def admin_save_word(
         extra_info={"manual": True, "zipf_score": z_score},
         origin=origin,
     )
+
+    try:
+        from .main import compute_and_save_related_words
+
+        compute_and_save_related_words(
+            word=word_clean,
+            storage=storage,
+            seed_csv_path=settings.seed_csv_path,
+            cache_npz_path=settings.cache_npz_path,
+            embedding_model=settings.embedding_model,
+        )
+    except Exception as e:
+        logger.warning(f"Could not compute related words for '{word_clean}': {e}")
+
     return {"status": "success", "word": word_clean}
 
 
