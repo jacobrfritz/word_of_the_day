@@ -93,7 +93,7 @@ async function loadWord(date) {
   if (elements.errorContainer) elements.errorContainer.style.display = 'none';
   try {
     const sessionId = getSessionId();
-    const response = await fetch(`/api/word?date=${date}&session_id=${sessionId}`);
+    const response = await fetch(`/wotd/api/word?date=${date}&session_id=${sessionId}`);
     if (!response.ok) {
       throw new Error('Not found');
     }
@@ -168,7 +168,7 @@ async function loadWord(date) {
 async function loadHistory() {
   if (!elements.historyList) return;
   try {
-    const response = await fetch('/api/history?limit=30');
+    const response = await fetch('/wotd/api/history?limit=30');
     if (!response.ok) return;
     const data = await response.json();
 
@@ -181,7 +181,7 @@ async function loadHistory() {
     data.forEach(item => {
       const a = document.createElement('a');
       a.className = `history-item ${item.date === activeDate ? 'active' : ''}`;
-      a.href = `/word/${encodeURIComponent(item.word.toLowerCase())}`;
+      a.href = `/wotd/word/${encodeURIComponent(item.word.toLowerCase())}`;
       a.dataset.date = item.date;
 
       const parts = item.date.split('-');
@@ -203,7 +203,7 @@ async function loadHistory() {
 // Fetch all dates that have data from the API
 async function loadDatesWithData() {
   try {
-    const response = await fetch('/api/dates');
+    const response = await fetch('/wotd/api/dates');
     if (!response.ok) return;
     const dates = await response.json();
     datesWithData = new Set(dates);
@@ -673,7 +673,7 @@ async function initEmbeddingVisual() {
   window.addEventListener('resize', resize);
 
   try {
-    const response = await fetch('/api/embeddings/grid');
+    const response = await fetch('/wotd/api/embeddings/grid');
     if (!response.ok) throw new Error('API failed');
     embeddingPoints = await response.json();
     drawEmbeddingSpace();
@@ -897,7 +897,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Fetch the most recent historical word to use its date as default
   let targetDate = getLocalDateString();
   try {
-    const response = await fetch('/api/history?limit=1');
+    const response = await fetch('/wotd/api/history?limit=1');
     if (response.ok) {
       const historyData = await response.json();
       if (historyData && historyData.length > 0) {
@@ -1045,7 +1045,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const inputGroup = subscribeForm.querySelector('.input-group');
 
       try {
-        const response = await fetch('/api/subscribe', {
+        const response = await fetch('/wotd/api/subscribe', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1123,7 +1123,7 @@ async function castVote(direction) {
   }
 
   try {
-    const response = await fetch('/api/vote', {
+    const response = await fetch('/wotd/api/vote', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

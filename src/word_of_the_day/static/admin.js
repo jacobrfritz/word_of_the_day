@@ -105,7 +105,7 @@ function setupAuthentication() {
     const password = elements.adminPasswordInput.value;
 
     try {
-      const response = await fetch('/api/admin/login', {
+      const response = await fetch('/wotd/api/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password })
@@ -198,7 +198,7 @@ async function fetchAdmin(url, options = {}) {
 // --- Overview / Stats Tab ---
 async function loadMetrics() {
   try {
-    const response = await fetchAdmin('/api/admin/stats');
+    const response = await fetchAdmin('/wotd/api/admin/stats');
     if (!response.ok) throw new Error('Failed to load metrics');
     const data = await response.json();
 
@@ -216,7 +216,7 @@ async function loadMetrics() {
 // --- Schedule / Edit Word Tab ---
 async function loadHistory() {
   try {
-    const response = await fetchAdmin('/api/admin/history');
+    const response = await fetchAdmin('/wotd/api/admin/history');
     if (!response.ok) throw new Error('Failed to load history');
     currentHistory = await response.json();
 
@@ -261,7 +261,7 @@ async function loadHistory() {
 
 async function deleteWord(date) {
   try {
-    const response = await fetchAdmin(`/api/admin/word?date=${date}`, {
+    const response = await fetchAdmin(`/wotd/api/admin/word?date=${date}`, {
       method: 'DELETE'
     });
     if (!response.ok) throw new Error('Failed to delete word');
@@ -303,7 +303,7 @@ async function handleExplore(e) {
   };
 
   try {
-    const response = await fetchAdmin('/api/admin/explore', {
+    const response = await fetchAdmin('/wotd/api/admin/explore', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -368,7 +368,7 @@ async function handleExplore(e) {
 
 async function scheduleWordFromCandidate(date, word, definition, origin, source, score) {
   try {
-    const response = await fetchAdmin('/api/admin/word', {
+    const response = await fetchAdmin('/wotd/api/admin/word', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -399,7 +399,7 @@ async function scheduleWordFromCandidate(date, word, definition, origin, source,
 async function loadLogs() {
   try {
     const lines = elements.logsLineCount.value;
-    const response = await fetchAdmin(`/api/admin/logs?lines=${lines}`);
+    const response = await fetchAdmin(`/wotd/api/admin/logs?lines=${lines}`);
     if (!response.ok) throw new Error('Failed to retrieve logs');
     const data = await response.json();
 
@@ -425,7 +425,7 @@ function setupEventListeners() {
   elements.clearCacheBtn.addEventListener('click', async () => {
     if (confirm('Are you sure you want to purge the definition lookup cache? This will cause the pipeline to run slower next time as it re-queries Merriam-Webster.')) {
       try {
-        const response = await fetchAdmin('/api/admin/cache/clear', { method: 'POST' });
+        const response = await fetchAdmin('/wotd/api/admin/cache/clear', { method: 'POST' });
         if (response.ok) {
           alert('Dictionary cache cleared successfully.');
           loadMetrics();
@@ -453,7 +453,7 @@ function setupEventListeners() {
         if (elements.emailError) elements.emailError.style.display = 'none';
 
         try {
-          const response = await fetchAdmin('/api/admin/send-email', {
+          const response = await fetchAdmin('/wotd/api/admin/send-email', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ force })
@@ -494,7 +494,7 @@ function setupEventListeners() {
     };
 
     try {
-      const response = await fetchAdmin('/api/admin/word', {
+      const response = await fetchAdmin('/wotd/api/admin/word', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)

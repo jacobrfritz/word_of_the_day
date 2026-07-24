@@ -93,7 +93,7 @@
     </div>
     <div class="related-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
       {% for rel in related_words %}
-        <a href="/word/{{ rel.word | lower }}" class="history-item" style="text-decoration: none;">
+        <a href="/wotd/word/{{ rel.word | lower }}" class="history-item" style="text-decoration: none;">
           <span class="hist-word">{{ rel.word }}</span>
           <span class="hist-date">Similarity: {{ "%.2f"|format(rel.score * 100) }}%</span>
           <span class="hist-details">Explore &rarr;</span>
@@ -109,5 +109,5 @@
 <script>
   const pageData = {{ page_data | tojson | safe }};
 </script>
-<script src="/static/word.js?v=1" defer></script>
+<script src="/wotd/static/word.js?v=1" defer></script>
 {% endblock %}

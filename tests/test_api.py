@@ -37,13 +37,13 @@ def client() -> TestClient:
 
 def test_get_word_not_found(client: TestClient, temp_storage: Storage) -> None:
     # Query date that has no word
-    response = client.get("/api/word?date=2026-07-10")
+    response = client.get("/wotd/api/word?date=2026-07-10")
     assert response.status_code == 404
     assert "No Word of the Day has been selected" in response.json()["detail"]
 
 
 def test_get_word_invalid_date(client: TestClient) -> None:
-    response = client.get("/api/word?date=invalid-date")
+    response = client.get("/wotd/api/word?date=invalid-date")
     assert response.status_code == 400
     assert "Invalid date format" in response.json()["detail"]
 
@@ -59,7 +59,7 @@ def test_get_word_success(client: TestClient, temp_storage: Storage) -> None:
         origin="test origin",
     )
 
-    response = client.get("/api/word?date=2026-07-10")
+    response = client.get("/wotd/api/word?date=2026-07-10")
     assert response.status_code == 200
     data = response.json()
     assert data["date"] == "2026-07-10"
@@ -79,7 +79,7 @@ def test_get_history(client: TestClient, temp_storage: Storage) -> None:
         date="2026-07-10", word="tacit", definition="implied", source="wiki", score=2.8
     )
 
-    response = client.get("/api/history")
+    response = client.get("/wotd/api/history")
     assert response.status_code == 200
     history = response.json()
     assert len(history) == 2
@@ -88,15 +88,15 @@ def test_get_history(client: TestClient, temp_storage: Storage) -> None:
     assert history[1]["date"] == "2026-07-09"
 
     # Test limit query param
-    response_limited = client.get("/api/history?limit=1")
+    response_limited = client.get("/wotd/api/history?limit=1")
     assert response_limited.status_code == 200
     assert len(response_limited.json()) == 1
     assert response_limited.json()[0]["date"] == "2026-07-10"
 
 
 def test_serve_html_index(client: TestClient) -> None:
-    # Verify GET / serves the HTML portal
-    response = client.get("/")
+    # Verify GET /wotd/ serves the HTML portal
+    response = client.get("/wotd/")
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert "Word of the Day Portal" in response.text
@@ -104,19 +104,19 @@ def test_serve_html_index(client: TestClient) -> None:
 
 def test_serve_static_files(client: TestClient) -> None:
     # Verify static files are mounted and served
-    response_css = client.get("/static/style.css")
+    response_css = client.get("/wotd/static/style.css")
     assert response_css.status_code == 200
     assert "text/css" in response_css.headers["content-type"]
     assert "Design System & Variables" in response_css.text
 
-    response_js = client.get("/static/index.js")
+    response_js = client.get("/wotd/static/index.js")
     assert response_js.status_code == 200
     assert "getLocalDateString" in response_js.text
 
 
 def test_health_check(client: TestClient, temp_storage: Storage) -> None:
     # Verify health check endpoint succeeds
-    response = client.get("/healthz")
+    response = client.get("/wotd/healthz")
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "healthy"
@@ -136,7 +136,7 @@ def test_security_headers(client: TestClient) -> None:
 def test_cors_headers(client: TestClient) -> None:
     # Verify CORS headers are present on API requests
     response = client.options(
-        "/api/word",
+        "/wotd/api/word",
         headers={
             "origin": "http://example.com",
             "access-control-request-method": "GET",
@@ -147,7 +147,7 @@ def test_cors_headers(client: TestClient) -> None:
 
 def test_get_embeddings_grid(client: TestClient, temp_storage: Storage) -> None:
     # Initially history is empty, so endpoint should return empty list
-    response_empty = client.get("/api/embeddings/grid")
+    response_empty = client.get("/wotd/api/embeddings/grid")
     assert response_empty.status_code == 200
     assert response_empty.json() == []
 
@@ -163,7 +163,7 @@ def test_get_embeddings_grid(client: TestClient, temp_storage: Storage) -> None:
     )
 
     # Fetch again and confirm history mapping is merged in and filtered
-    response_updated = client.get("/api/embeddings/grid")
+    response_updated = client.get("/wotd/api/embeddings/grid")
     assert response_updated.status_code == 200
     data_updated = response_updated.json()
     assert len(data_updated) == 1
@@ -181,8 +181,8 @@ def test_get_embeddings_grid(client: TestClient, temp_storage: Storage) -> None:
 
 
 def test_serve_html_subscribe(client: TestClient) -> None:
-    # Verify GET /subscribe serves the subscription HTML page
-    response = client.get("/subscribe")
+    # Verify GET /wotd/subscribe serves the subscription HTML page
+    response = client.get("/wotd/subscribe")
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert "Subscribe - Word of the Day" in response.text
@@ -192,13 +192,13 @@ def test_serve_html_subscribe(client: TestClient) -> None:
 def test_api_subscribe_and_unsubscribe(
     client: TestClient, temp_storage: Storage
 ) -> None:
-    # 1. Test POST /api/subscribe with invalid email
-    response = client.post("/api/subscribe", json={"email": "invalid-email"})
+    # 1. Test POST /wotd/api/subscribe with invalid email
+    response = client.post("/wotd/api/subscribe", json={"email": "invalid-email"})
     assert response.status_code == 400
     assert "Invalid email format" in response.json()["detail"]
 
-    # 2. Test POST /api/subscribe with valid email
-    response = client.post("/api/subscribe", json={"email": "test@example.com"})
+    # 2. Test POST /wotd/api/subscribe with valid email
+    response = client.post("/wotd/api/subscribe", json={"email": "test@example.com"})
     assert response.status_code == 200
     assert response.json()["success"] is True
 
@@ -209,8 +209,8 @@ def test_api_subscribe_and_unsubscribe(
     token = subscriptions[0]["unsubscribe_token"]
     assert token is not None
 
-    # 3. Test GET /api/unsubscribe with valid token
-    response = client.get(f"/api/unsubscribe?token={token}")
+    # 3. Test GET /wotd/api/unsubscribe with valid token
+    response = client.get(f"/wotd/api/unsubscribe?token={token}")
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert "Unsubscribed Successfully" in response.text
@@ -219,8 +219,8 @@ def test_api_subscribe_and_unsubscribe(
     subscriptions = temp_storage.get_active_subscribers()
     assert len(subscriptions) == 0
 
-    # 4. Test GET /api/unsubscribe with invalid token
-    response = client.get("/api/unsubscribe?token=nonexistent_token")
+    # 4. Test GET /wotd/api/unsubscribe with invalid token
+    response = client.get("/wotd/api/unsubscribe?token=nonexistent_token")
     assert response.status_code == 200
     assert "Invalid Token" in response.text
 
@@ -257,18 +257,18 @@ def test_future_dates_filtering(client: TestClient, temp_storage: Storage) -> No
     )
 
     # 1. Test get_word for future date returns 404
-    resp = client.get(f"/api/word?date={future_date}")
+    resp = client.get(f"/wotd/api/word?date={future_date}")
     assert resp.status_code == 404
     assert "not available for future dates" in resp.json()["detail"].lower()
 
     # 2. Test get_word for past/today works
-    resp = client.get(f"/api/word?date={past_date}")
+    resp = client.get(f"/wotd/api/word?date={past_date}")
     assert resp.status_code == 200
-    resp = client.get(f"/api/word?date={today_date}")
+    resp = client.get(f"/wotd/api/word?date={today_date}")
     assert resp.status_code == 200
 
     # 3. Test get_dates excludes future dates
-    resp = client.get("/api/dates")
+    resp = client.get("/wotd/api/dates")
     assert resp.status_code == 200
     dates = resp.json()
     assert past_date in dates
@@ -276,7 +276,7 @@ def test_future_dates_filtering(client: TestClient, temp_storage: Storage) -> No
     assert future_date not in dates
 
     # 4. Test get_history excludes future dates
-    resp = client.get("/api/history")
+    resp = client.get("/wotd/api/history")
     assert resp.status_code == 200
     history = resp.json()
     history_dates = [h["date"] for h in history]
@@ -294,7 +294,7 @@ def test_future_dates_filtering(client: TestClient, temp_storage: Storage) -> No
         source="wikipedia",
         score=3.0,
     )
-    resp = client.get("/api/embeddings/grid")
+    resp = client.get("/wotd/api/embeddings/grid")
     assert resp.status_code == 200
     grid = resp.json()
     grid_words = [g["word"] for g in grid]
@@ -323,11 +323,11 @@ def test_admin_history_includes_future(
     headers = {"Authorization": f"Bearer {token}"}
 
     # Unauthenticated call fails
-    resp = client.get("/api/admin/history")
+    resp = client.get("/wotd/api/admin/history")
     assert resp.status_code == 401
 
     # Authenticated call succeeds and includes future date
-    resp = client.get("/api/admin/history", headers=headers)
+    resp = client.get("/wotd/api/admin/history", headers=headers)
     assert resp.status_code == 200
     history = resp.json()
     history_dates = [h["date"] for h in history]
@@ -368,17 +368,17 @@ def test_admin_send_email(client: TestClient, temp_storage: Storage) -> None:
     token = hashlib.sha256(password.encode("utf-8")).hexdigest()
     headers = {"Authorization": f"Bearer {token}"}
 
-    # 1. Unauthenticated request to /api/admin/send-email returns 401
-    resp = client.post("/api/admin/send-email", json={})
+    # 1. Unauthenticated request to /wotd/api/admin/send-email returns 401
+    resp = client.post("/wotd/api/admin/send-email", json={})
     assert resp.status_code == 401
 
     # Save original backend and set to console
     orig_backend = settings.smtp_backend
     settings.smtp_backend = "console"
     try:
-        # 2. Authenticated request to /api/admin/send-email returns 404 if no word exists
+        # 2. Authenticated request to /wotd/api/admin/send-email returns 404 if no word exists
         resp = client.post(
-            "/api/admin/send-email", json={"date": "2026-07-16"}, headers=headers
+            "/wotd/api/admin/send-email", json={"date": "2026-07-16"}, headers=headers
         )
         assert resp.status_code == 404
         assert "no word of the day has been selected" in resp.json()["detail"].lower()
@@ -398,7 +398,7 @@ def test_admin_send_email(client: TestClient, temp_storage: Storage) -> None:
 
         # 3. Authenticated request sends email to active subscribers
         resp = client.post(
-            "/api/admin/send-email", json={"date": "2026-07-16"}, headers=headers
+            "/wotd/api/admin/send-email", json={"date": "2026-07-16"}, headers=headers
         )
         assert resp.status_code == 200
         res_json = resp.json()
@@ -415,14 +415,14 @@ def test_admin_send_email(client: TestClient, temp_storage: Storage) -> None:
 
         # 4. Sending again without force should send to 0 subscribers
         resp = client.post(
-            "/api/admin/send-email", json={"date": "2026-07-16"}, headers=headers
+            "/wotd/api/admin/send-email", json={"date": "2026-07-16"}, headers=headers
         )
         assert resp.status_code == 200
         assert resp.json()["sent_count"] == 0
 
         # 5. Sending again WITH force should send to 2 subscribers
         resp = client.post(
-            "/api/admin/send-email",
+            "/wotd/api/admin/send-email",
             json={"date": "2026-07-16", "force": True},
             headers=headers,
         )
@@ -443,7 +443,7 @@ def test_api_voting(client: TestClient, temp_storage: Storage) -> None:
     )
 
     # Get word without session ID
-    response = client.get("/api/word?date=2026-07-10")
+    response = client.get("/wotd/api/word?date=2026-07-10")
     assert response.status_code == 200
     data = response.json()
     assert data["upvotes"] == 0
@@ -452,7 +452,7 @@ def test_api_voting(client: TestClient, temp_storage: Storage) -> None:
 
     # Cast an upvote via API
     resp = client.post(
-        "/api/vote",
+        "/wotd/api/vote",
         json={"date": "2026-07-10", "direction": "up", "session_id": "test_sess"},
     )
     assert resp.status_code == 200
@@ -463,7 +463,7 @@ def test_api_voting(client: TestClient, temp_storage: Storage) -> None:
     assert res_data["user_vote"] == 1
 
     # Fetch word WITH session ID
-    response = client.get("/api/word?date=2026-07-10&session_id=test_sess")
+    response = client.get("/wotd/api/word?date=2026-07-10&session_id=test_sess")
     assert response.status_code == 200
     data = response.json()
     assert data["upvotes"] == 1
@@ -472,7 +472,7 @@ def test_api_voting(client: TestClient, temp_storage: Storage) -> None:
 
     # Downvote from a different session ID
     resp = client.post(
-        "/api/vote",
+        "/wotd/api/vote",
         json={"date": "2026-07-10", "direction": "down", "session_id": "other_sess"},
     )
     assert resp.status_code == 200
@@ -483,7 +483,7 @@ def test_api_voting(client: TestClient, temp_storage: Storage) -> None:
 
     # Clear vote
     resp = client.post(
-        "/api/vote",
+        "/wotd/api/vote",
         json={"date": "2026-07-10", "direction": "clear", "session_id": "other_sess"},
     )
     assert resp.status_code == 200
@@ -495,14 +495,14 @@ def test_api_voting(client: TestClient, temp_storage: Storage) -> None:
     # Test error cases
     # Non-existent date
     resp = client.post(
-        "/api/vote",
+        "/wotd/api/vote",
         json={"date": "2026-07-15", "direction": "up", "session_id": "test_sess"},
     )
     assert resp.status_code == 404
 
     # Invalid direction
     resp = client.post(
-        "/api/vote",
+        "/wotd/api/vote",
         json={"date": "2026-07-10", "direction": "invalid", "session_id": "test_sess"},
     )
     assert resp.status_code == 400
@@ -510,7 +510,7 @@ def test_api_voting(client: TestClient, temp_storage: Storage) -> None:
     # Rate limiting (10 votes per session)
     for _ in range(15):
         resp = client.post(
-            "/api/vote",
+            "/wotd/api/vote",
             json={"date": "2026-07-10", "direction": "up", "session_id": "spam_sess"},
         )
         if resp.status_code == 429:
@@ -524,7 +524,7 @@ def test_voting_api_non_wotd(client: TestClient, temp_storage: Storage) -> None:
 
     # Cast vote using word parameter
     resp = client.post(
-        "/api/vote",
+        "/wotd/api/vote",
         json={"word": "ephemeral", "direction": "up", "session_id": "sess_non_wotd"},
     )
     assert resp.status_code == 200
@@ -535,8 +535,8 @@ def test_voting_api_non_wotd(client: TestClient, temp_storage: Storage) -> None:
     assert res_data["downvotes"] == 0
     assert res_data["user_vote"] == 1
 
-    # Fetch word via /api/word?word=ephemeral
-    response = client.get("/api/word?word=ephemeral&session_id=sess_non_wotd")
+    # Fetch word via /wotd/api/word?word=ephemeral
+    response = client.get("/wotd/api/word?word=ephemeral&session_id=sess_non_wotd")
     assert response.status_code == 200
     data = response.json()
     assert data["word"] == "ephemeral"
@@ -544,7 +544,7 @@ def test_voting_api_non_wotd(client: TestClient, temp_storage: Storage) -> None:
     assert data["user_vote"] == 1
 
     # Render word detail page
-    res_page = client.get("/word/ephemeral")
+    res_page = client.get("/wotd/word/ephemeral")
     assert res_page.status_code == 200
     assert "ephemeral" in res_page.text
     assert 'id="voteScore">1</span>' in res_page.text
@@ -561,7 +561,7 @@ def test_get_word_page_success(client: TestClient, temp_storage: Storage) -> Non
         origin="test origin",
     )
 
-    response = client.get("/word/chimerical")
+    response = client.get("/wotd/word/chimerical")
     assert response.status_code == 200
     html = response.text
     # Check title and meta tags
@@ -585,13 +585,13 @@ def test_get_word_page_case_insensitive(client: TestClient, temp_storage: Storag
     )
 
     # Search with different casing
-    response = client.get("/word/CHIMERICAL")
+    response = client.get("/wotd/word/CHIMERICAL")
     assert response.status_code == 200
     assert "<title>CHIMERICAL - Word of the Day</title>" in response.text
 
 
 def test_get_word_page_not_found(client: TestClient, temp_storage: Storage) -> None:
-    response = client.get("/word/nonexistentword")
+    response = client.get("/wotd/word/nonexistentword")
     assert response.status_code == 404
     html = response.text
     assert "Word Not Found" in html
@@ -599,7 +599,7 @@ def test_get_word_page_not_found(client: TestClient, temp_storage: Storage) -> N
 
 
 def test_read_map(client: TestClient) -> None:
-    response = client.get("/map")
+    response = client.get("/wotd/map")
     assert response.status_code == 200
     assert "Vocabulary Map" in response.text
     assert 'id="embeddingCanvas"' in response.text
@@ -615,7 +615,7 @@ def test_get_word_page_renders_related_words(client: TestClient, temp_storage: S
     )
     temp_storage.save_related_words("sagacious", [("loquacious", 0.92), ("taciturn", 0.85)])
 
-    response = client.get("/word/sagacious")
+    response = client.get("/wotd/word/sagacious")
     assert response.status_code == 200
     html = response.text
     assert "Related Words" in html
@@ -635,13 +635,13 @@ def test_get_word_page_wotd_badge_and_unfeatured(client: TestClient, temp_storag
     )
     temp_storage.save_related_words("sagacious", [("loquacious", 0.92)])
 
-    res_wotd = client.get("/word/sagacious")
+    res_wotd = client.get("/wotd/word/sagacious")
     assert res_wotd.status_code == 200
     assert "Word of the Day" in res_wotd.text
     assert "Related Words" in res_wotd.text
 
     temp_storage.cache_definition("loquacious", True, "(adjective) talkative", "Latin")
-    res_unfeatured = client.get("/word/loquacious")
+    res_unfeatured = client.get("/wotd/word/loquacious")
     assert res_unfeatured.status_code == 200
     assert "Vocabulary Entry" in res_unfeatured.text
     assert "talkative" in res_unfeatured.text

@@ -234,7 +234,7 @@ def send_email_batch(
         for subscriber in recipients:
             email = subscriber["email"]
             token = subscriber["unsubscribe_token"]
-            unsubscribe_url = f"{app_base_url}/api/unsubscribe?token={token}"
+            unsubscribe_url = f"{app_base_url}/wotd/api/unsubscribe?token={token}"
 
             # Prevent double send
             if not force and storage.has_received_email(record["date"], email):
@@ -298,7 +298,7 @@ def send_email_batch(
         for subscriber in recipients:
             email = subscriber["email"]
             token = subscriber["unsubscribe_token"]
-            unsubscribe_url = f"{app_base_url}/api/unsubscribe?token={token}"
+            unsubscribe_url = f"{app_base_url}/wotd/api/unsubscribe?token={token}"
 
             # Prevent double send
             if not force and storage.has_received_email(record["date"], email):

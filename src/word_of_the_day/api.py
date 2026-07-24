@@ -74,6 +74,7 @@ app = FastAPI(
     title="Word of the Day Portal",
     description="REST API and user interface for the Word of the Day selections.",
     version="1.0.0",
+    root_path="/wotd",
     docs_url=None if settings.disable_api_docs else "/docs",
     redoc_url=None if settings.disable_api_docs else "/redoc",
     openapi_url=None if settings.disable_api_docs else "/openapi.json",
@@ -91,6 +92,11 @@ app.add_middleware(
 )
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
+app.mount(
+    "/wotd/static",
+    StaticFiles(directory=Path(__file__).parent / "static"),
+    name="static_wotd",
+)
 app.mount(
     "/static",
     StaticFiles(directory=Path(__file__).parent / "static"),
@@ -118,6 +124,7 @@ class SubscribeRequest(BaseModel):
     email: str
 
 
+@app.post("/wotd/api/subscribe")
 @app.post("/api/subscribe")
 def subscribe(
     request: SubscribeRequest,
@@ -168,6 +175,7 @@ def check_rate_limit(request: Request, session_id: str) -> None:
     vote_rate_limit_store[key].append(now)
 
 
+@app.post("/wotd/api/vote")
 @app.post("/api/vote")
 def cast_vote(
     vote_req: VoteRequest,
@@ -265,6 +273,7 @@ def cast_vote(
     }
 
 
+@app.get("/wotd/api/unsubscribe", response_class=HTMLResponse)
 @app.get("/api/unsubscribe", response_class=HTMLResponse)
 def unsubscribe(
     request: Request,
@@ -291,6 +300,7 @@ def unsubscribe(
     )
 
 
+@app.get("/wotd/api/word", response_model=None)
 @app.get("/api/word", response_model=None)
 def get_word(
     date: str | None = Query(
@@ -410,6 +420,7 @@ def get_word(
     return record
 
 
+@app.get("/wotd/api/dates", response_model=list[str])
 @app.get("/api/dates", response_model=list[str])
 def get_dates(storage: Storage = Depends(get_storage)) -> list[str]:
     """
@@ -421,6 +432,7 @@ def get_dates(storage: Storage = Depends(get_storage)) -> list[str]:
     return sorted({r["date"] for r in records if r["date"] <= today_str})
 
 
+@app.get("/wotd/api/history", response_model=list[WordOfTheDayRecord])
 @app.get("/api/history", response_model=list[WordOfTheDayRecord])
 def get_history(
     limit: int | None = Query(
@@ -555,6 +567,7 @@ def _get_base_embeddings_grid() -> (
     )
 
 
+@app.get("/wotd/api/embeddings/grid")
 @app.get("/api/embeddings/grid")
 def get_embeddings_grid(
     storage: Storage = Depends(get_storage),
@@ -642,6 +655,7 @@ def get_embeddings_grid(
     return response_data
 
 
+@app.get("/wotd/", response_class=HTMLResponse)
 @app.get("/", response_class=HTMLResponse)
 def read_root(request: Request) -> HTMLResponse:
     """
@@ -650,6 +664,7 @@ def read_root(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request=request, name="index.html")
 
 
+@app.get("/wotd/subscribe", response_class=HTMLResponse)
 @app.get("/subscribe", response_class=HTMLResponse)
 def read_subscribe(request: Request) -> HTMLResponse:
     """
@@ -658,6 +673,7 @@ def read_subscribe(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request=request, name="subscribe.html")
 
 
+@app.get("/wotd/map", response_class=HTMLResponse)
 @app.get("/map", response_class=HTMLResponse)
 def read_map(request: Request) -> HTMLResponse:
     """
@@ -666,6 +682,7 @@ def read_map(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request=request, name="map.html")
 
 
+@app.get("/wotd/word/{word}", response_class=HTMLResponse)
 @app.get("/word/{word}", response_class=HTMLResponse)
 def get_word_page(
     request: Request,
@@ -786,6 +803,7 @@ def get_word_page(
 
 
 
+@app.get("/wotd/healthz", status_code=200)
 @app.get("/healthz", status_code=200)
 def health_check(storage: Storage = Depends(get_storage)) -> dict[str, str]:
     """
@@ -846,6 +864,7 @@ class ExploreRequest(BaseModel):
     pos_alternation_enabled: bool | None = None
 
 
+@app.post("/wotd/api/admin/login")
 @app.post("/api/admin/login")
 def admin_login(payload: LoginRequest) -> dict[str, str]:
     import hashlib
@@ -856,6 +875,7 @@ def admin_login(payload: LoginRequest) -> dict[str, str]:
     return {"token": token}
 
 
+@app.get("/wotd/admin", response_class=HTMLResponse)
 @app.get("/admin", response_class=HTMLResponse)
 def read_admin(request: Request) -> HTMLResponse:
     """
@@ -864,6 +884,7 @@ def read_admin(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request=request, name="admin.html")
 
 
+@app.post("/wotd/api/admin/word")
 @app.post("/api/admin/word")
 def admin_save_word(
     payload: SaveWordRequest,
@@ -956,6 +977,7 @@ def admin_save_word(
     return {"status": "success", "word": word_clean}
 
 
+@app.delete("/wotd/api/admin/word")
 @app.delete("/api/admin/word")
 def admin_delete_word(
     date: str = Query(..., description="Date in YYYY-MM-DD format"),
@@ -973,6 +995,7 @@ def admin_delete_word(
     return {"status": "success", "message": f"Deleted word for {date}"}
 
 
+@app.get("/wotd/api/admin/history", response_model=list[WordOfTheDayRecord])
 @app.get("/api/admin/history", response_model=list[WordOfTheDayRecord])
 def get_admin_history(
     limit: int | None = Query(
@@ -990,6 +1013,7 @@ def get_admin_history(
     return records
 
 
+@app.get("/wotd/api/admin/stats")
 @app.get("/api/admin/stats")
 def admin_stats(
     storage: Storage = Depends(get_storage),
@@ -1019,6 +1043,7 @@ def admin_stats(
     }
 
 
+@app.post("/wotd/api/admin/cache/clear")
 @app.post("/api/admin/cache/clear")
 def admin_clear_cache(
     storage: Storage = Depends(get_storage),
@@ -1035,6 +1060,7 @@ class SendEmailRequest(BaseModel):
     force: bool | None = False
 
 
+@app.post("/wotd/api/admin/send-email")
 @app.post("/api/admin/send-email")
 def admin_send_email(
     payload: SendEmailRequest,
@@ -1092,6 +1118,7 @@ def admin_send_email(
         ) from e
 
 
+@app.get("/wotd/api/admin/logs")
 @app.get("/api/admin/logs")
 def admin_logs(
     lines: int = Query(100, description="Number of tail lines to retrieve"),
@@ -1108,6 +1135,7 @@ def admin_logs(
         raise HTTPException(status_code=500, detail=f"Failed to read logs: {e}") from e
 
 
+@app.post("/wotd/api/admin/explore")
 @app.post("/api/admin/explore")
 def admin_explore(
     payload: ExploreRequest,

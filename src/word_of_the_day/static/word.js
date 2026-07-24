@@ -116,7 +116,7 @@ async function fetchInitialVoteState() {
   const sessionId = getSessionId();
   try {
     const queryParam = pageData.date ? `date=${encodeURIComponent(pageData.date)}` : `word=${encodeURIComponent(pageData.word)}`;
-    const response = await fetch(`/api/word?${queryParam}&session_id=${sessionId}`);
+    const response = await fetch(`/wotd/api/word?${queryParam}&session_id=${sessionId}`);
     if (response.ok) {
       const data = await response.json();
       updateVoteUI(data.upvotes || 0, data.downvotes || 0, data.user_vote);
@@ -141,7 +141,7 @@ async function castVote(direction) {
   }
 
   try {
-    const response = await fetch('/api/vote', {
+    const response = await fetch('/wotd/api/vote', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

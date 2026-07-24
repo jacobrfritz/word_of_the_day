@@ -35,14 +35,14 @@ def client() -> TestClient:
 def test_admin_login_success(client: TestClient) -> None:
     # Use default password set in config setting
     password = settings.admin_password
-    response = client.post("/api/admin/login", json={"password": password})
+    response = client.post("/wotd/api/admin/login", json={"password": password})
     assert response.status_code == 200
     token = response.json()["token"]
     assert token == hashlib.sha256(password.encode("utf-8")).hexdigest()
 
 
 def test_admin_login_unauthorized(client: TestClient) -> None:
-    response = client.post("/api/admin/login", json={"password": "wrongpassword"})
+    response = client.post("/wotd/api/admin/login", json={"password": "wrongpassword"})
     assert response.status_code == 401
 
 
@@ -60,7 +60,7 @@ def test_admin_word_crud(client: TestClient, temp_storage: Storage) -> None:
         "origin": "Latin",
         "score": 4.2,
     }
-    response = client.post("/api/admin/word", json=payload, headers=headers)
+    response = client.post("/wotd/api/admin/word", json=payload, headers=headers)
     assert response.status_code == 200
     assert response.json()["status"] == "success"
 
@@ -71,7 +71,7 @@ def test_admin_word_crud(client: TestClient, temp_storage: Storage) -> None:
     assert record["definition"] == "state of being alone"
 
     # Delete the word
-    response = client.delete("/api/admin/word?date=2026-07-15", headers=headers)
+    response = client.delete("/wotd/api/admin/word?date=2026-07-15", headers=headers)
     assert response.status_code == 200
     assert response.json()["status"] == "success"
 
@@ -88,7 +88,7 @@ def test_admin_word_auto_validation(client: TestClient, temp_storage: Storage) -
     temp_storage.cache_definition("serendipity", True, "happy chance", "English origin")
 
     payload = {"date": "2026-07-16", "word": "serendipity"}
-    response = client.post("/api/admin/word", json=payload, headers=headers)
+    response = client.post("/wotd/api/admin/word", json=payload, headers=headers)
     assert response.status_code == 200
     assert response.json()["status"] == "success"
 
@@ -110,11 +110,11 @@ def test_admin_unauthorized_endpoints(client: TestClient) -> None:
         "definition": "state of being alone",
         "source": "Manual Selection",
     }
-    response = client.post("/api/admin/word", json=payload, headers=headers)
+    response = client.post("/wotd/api/admin/word", json=payload, headers=headers)
     assert response.status_code == 401
 
     # Try stats
-    response = client.get("/api/admin/stats", headers=headers)
+    response = client.get("/wotd/api/admin/stats", headers=headers)
     assert response.status_code == 401
 
 
@@ -127,18 +127,18 @@ def test_admin_stats_and_clear_cache(client: TestClient, temp_storage: Storage) 
     temp_storage.cache_definition("testword", True, "definition", "origin")
 
     # Get stats
-    response = client.get("/api/admin/stats", headers=headers)
+    response = client.get("/wotd/api/admin/stats", headers=headers)
     assert response.status_code == 200
     data = response.json()
     assert data["cache_size"] == 1
 
     # Clear cache
-    response = client.post("/api/admin/cache/clear", headers=headers)
+    response = client.post("/wotd/api/admin/cache/clear", headers=headers)
     assert response.status_code == 200
     assert response.json()["status"] == "success"
 
     # Check stats again
-    response = client.get("/api/admin/stats", headers=headers)
+    response = client.get("/wotd/api/admin/stats", headers=headers)
     data = response.json()
     assert data["cache_size"] == 0
 
